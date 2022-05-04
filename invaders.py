@@ -1,4 +1,4 @@
-''' Python implementation of Space Invaders, C. Brinch, 2019 '''
+''' Python clone of Space Invaders, C. Brinch, 2019 '''
 
 import numpy as np
 import pygame
@@ -99,7 +99,7 @@ class PlayerClass(BaseClass):
     '''
 
     def __init__(self):
-        BaseClass.__init__(self, [0, height-33], 1, 1, 1)
+        BaseClass.__init__(self, [0, 223], 1, 1, 1)
         self.lives_left = 3
         self.score = 0
 
@@ -107,12 +107,11 @@ class PlayerClass(BaseClass):
         ''' Select player sprite '''
         return bm.tank
 
-    def move(self, screen, direction):
+    def move(self, direction):
         ''' Update player position '''
         self.refpos[0] += direction
         self.refpos[0] = np.maximum(0, self.refpos[0])
         self.refpos[0] = np.minimum(self.refpos[0], width-16)
-        self.draw_sprite(screen, 0)
 
     def update_score(self, screen):
         ''' Update score board '''
@@ -126,40 +125,41 @@ class ShotClass(BaseClass):
     '''
 
     def __init__(self):
-        BaseClass.__init__(self, [0, 0], 0, 1, 1)
+        BaseClass.__init__(self, [width-1,height-1], 0, 1, 1)
         self.active = 0
         self.shots_fired = 0
+
+    def position(self, number):
+        return tuple(self.refpos)
 
     def sprite(self, number):
         ''' Select shot sprite '''
         sprites = [bm.shot*0, bm.shot, bm.shot_exploding, bm.shot_exploding*0]
         return sprites[self.active]
 
-    def fire(self, screen, position):
+    def fire(self, position):
         ''' Initiate a shot '''
         self.active = 1
-        self.refpos = [position, 207]
+        self.refpos = [position, 215]
         self.shots_fired += 1
-        self.draw_sprite(screen, 0)
 
-    def move(self, screen):
+    def move(self):
         ''' Update shot position '''
         self.refpos[1] -= 1
         if self.refpos[1] == 40:
-            self.active = 0
-        self.draw_sprite(screen, 0)
+            self.active = 2
+
 
     def check_collision(self, screen, enemies):
         ''' Check if the shot hits anything '''
-
         if screen.get_at((self.refpos[0], self.refpos[1]-10)) == WHITE:
             cll = ((self.refpos[0])-enemies.refpos[0]) // 16
             row = (enemies.refpos[1]-(self.refpos[1]-9)) // 16
-            return 11*row+cll
-
+            enemies.draw_sprite(screen, 11*row+cll)
+            self.active = 2
+            return 10
+        '''
         if screen.get_at((self.refpos[0], self.refpos[1]-10)) == GREEN:
-            print('Booya')
-            '''
             x, y = self.refpos[0], self.refpos[1]
             buffer = np.array([[1 if screen.get_at(
                 (x-4+i, y+j-8)) == GREEN else 0 for j in range(8)] for i in range(8)])
@@ -168,10 +168,10 @@ class ShotClass(BaseClass):
 
             print(mask)
             draw((buffer+mask) % 2, screen, x-4, y)
-            '''
+        
             self.active = 0
-
-        return -1
+        '''
+        return 0
 
 
 class ShieldClass(BaseClass):
@@ -214,6 +214,7 @@ class GameControl():
         draw(bm.tank, screen, 41, 247)
         write("credit_"+str(self.credit).zfill(2), screen, 136, 247)
         pygame.draw.line(screen, GREEN, (0, 239), (width, 239))
+        pygame.draw.line(screen, (0,0,255,255), (0, 206), (width, 206))
         pygame.display.flip()
 
     def insertcoins(self, screen):
@@ -253,19 +254,57 @@ def main():
             if event.type == pygame.QUIT:
                 pygame.quit()
 
-        # Get player input
+        # Get player input and move player
         key = pygame.key.get_pressed()
         if key[pygame.K_q]:
             pygame.quit()
         elif key[pygame.K_SPACE] and shot.active == 0:
-            print("haya")
-            shot.fire(screen, player.refpos[0]+9)
+            shot.fire(player.refpos[0]+9)
         elif key[pygame.K_RIGHT]:
-            player.move(screen, 1)
+            player.move(1)
         elif key[pygame.K_LEFT]:
-            player.move(screen, -1)
+            player.move(-1)
+
+        # Draw player
+        player.draw_sprite(screen, 0)
+
+
+        for kl in range(4):
+            if shot.active == 1:
+                print(shot.refpos, shot.active, shot.shots_fired)
+                # Move shot
+                shot.refpos[1] -= 1
+                shot.draw_sprite(screen, shot.active)
+                if shot.refpos[1] == 40:
+                    shot.active = 2
+                    shot.refpos[0] += -3
+                    shot.refpos[1] += 3
+                if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == WHITE:
+                    shot.active = 0
+                    shot.draw_sprite(screen, shot.active)
+                    cll = ((shot.refpos[0])-enemies.refpos[0]) // 16
+                    row = (enemies.refpos[1]-(shot.refpos[1]-9)) // 16
+                    enemies.rack[11*row+cll] = 2
+                    enemies.draw_sprite(screen, 11*row+cll)
+                    enemies.rack[11*row+cll] = 0
+                    player.update_score(screen) 
+                if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == GREEN:
+                    shot.active = 0
+                    shot.draw_sprite(screen, shot.active)
+                    print(shot.refpos, shot.active)
+                    #x, y = shot.refpos[0], shot.refpos[1]
+                    #buffer = np.array([[1 if screen.get_at((x-3+k, y+j-8)) == GREEN else 0 for k in range(8)] for j in range(8)])
+                    #mask = np.logical_and(buffer, np.logical_not(bm.shot_exploding)).astype(int)
+                    #draw(mask , screen, x-3, y)
+           
+
+
+        if shot.active > 1:
+            shot.draw_sprite(screen, shot.active)
+            shot.active = (shot.active + 1) % 4
 
         # move shot and determine hits
+        '''
         if shot.active == 1:
             shot.move(screen)
             hit = shot.check_collision(screen, enemies)
@@ -276,13 +315,14 @@ def main():
                 enemies.draw_sprite(screen, hit)
                 enemies.rack[hit] = 0
                 player.update_score(screen)
-
+        '''
         # Move and draw enemies
         enemies.draw_sprite(screen, i % 55)
 
         i += 1
         if i % 55 == 0:
             enemies.move()
+                
 
         # Mysterious ship
 
