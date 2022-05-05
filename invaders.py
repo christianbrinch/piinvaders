@@ -77,8 +77,8 @@ class EnemyClass(BaseClass):
 
     def sprite(self, number):
         ''' Determine which sprite to use, given element number '''
-        sprites = [np.zeros([8, 16], dtype=int), bm.aliens[number//22]
-                   [self.refpos[0]//2 % 2], bm.alien_exploding]
+        sprites = [0*bm.alien_exploding, bm.aliens[number//22]
+                   [self.refpos[0] // 2 % 2], bm.alien_exploding, 0*bm.alien_exploding]
         return sprites[self.rack[number]]
 
     def move(self):
@@ -113,9 +113,9 @@ class PlayerClass(BaseClass):
         self.refpos[0] = np.maximum(0, self.refpos[0])
         self.refpos[0] = np.minimum(self.refpos[0], width-16)
 
-    def update_score(self, screen):
+    def update_score(self, screen, score):
         ''' Update score board '''
-        self.score += 10
+        self.score += score
         write("___"+str(self.score).zfill(4), screen, 0, 31)
 
 
@@ -125,8 +125,9 @@ class ShotClass(BaseClass):
     '''
 
     def __init__(self):
-        BaseClass.__init__(self, [width-1,height-1], 0, 1, 1)
+        BaseClass.__init__(self, [width-1, height-1], 0, 1, 1)
         self.active = 0
+        self.cooldown = 0
         self.shots_fired = 0
 
     def position(self, number):
@@ -140,38 +141,15 @@ class ShotClass(BaseClass):
     def fire(self, position):
         ''' Initiate a shot '''
         self.active = 1
+        self.cooldown = 10
         self.refpos = [position, 215]
         self.shots_fired += 1
 
     def move(self):
         ''' Update shot position '''
-        self.refpos[1] -= 1
-        if self.refpos[1] == 40:
-            self.active = 2
-
 
     def check_collision(self, screen, enemies):
         ''' Check if the shot hits anything '''
-        if screen.get_at((self.refpos[0], self.refpos[1]-10)) == WHITE:
-            cll = ((self.refpos[0])-enemies.refpos[0]) // 16
-            row = (enemies.refpos[1]-(self.refpos[1]-9)) // 16
-            enemies.draw_sprite(screen, 11*row+cll)
-            self.active = 2
-            return 10
-        '''
-        if screen.get_at((self.refpos[0], self.refpos[1]-10)) == GREEN:
-            x, y = self.refpos[0], self.refpos[1]
-            buffer = np.array([[1 if screen.get_at(
-                (x-4+i, y+j-8)) == GREEN else 0 for j in range(8)] for i in range(8)])
-            print(buffer)
-            mask = np.logical_and((bm.shot_exploding), buffer).astype(int)
-
-            print(mask)
-            draw((buffer+mask) % 2, screen, x-4, y)
-        
-            self.active = 0
-        '''
-        return 0
 
 
 class ShieldClass(BaseClass):
@@ -185,6 +163,42 @@ class ShieldClass(BaseClass):
     def sprite(self, number):
         ''' Select shield sprite '''
         return bm.shield
+
+
+class SaucerClass(BaseClass):
+    ''' An extension to the base class to hold the saucer '''
+
+    def __init__(self):
+        BaseClass.__init__(self, [0, 0], 1, 1, 1)
+        self.timeto = 600
+        self.active = 0
+        self.step = 0
+
+    def sprite(self, number):
+        ''' Select saucer sprite '''
+        sprites = [0*bm.saucer, bm.saucer, bm.saucer_exploding, 0*bm.saucer]
+        return sprites[number]
+
+    def direction(self, shot):
+        ''' Determine the saucer direction based on the least significant bit of
+            the number of shots fires.
+        '''
+        self.step = 2*(shot.shots_fired % 2) - 1
+        return self.step
+
+    def score(self, shots):
+        ''' Determine the score for hitting the saucer.
+            It should be modulo 16, but the original Space Invaders has a bug.
+        '''
+        scoretable = [100, 50, 50, 100, 150, 100, 100, 50, 300, 100, 100, 100, 50, 150, 100, 50]
+        return scoretable[shots % 15]
+
+    def move(self):
+        ''' Update player position '''
+        self.refpos[0] += self.step
+        if self.refpos[0] < -24 or self.refpos[0] > width:
+            self.active = 0
+            self.timeto = 600
 
 
 class GameControl():
@@ -214,7 +228,6 @@ class GameControl():
         draw(bm.tank, screen, 41, 247)
         write("credit_"+str(self.credit).zfill(2), screen, 136, 247)
         pygame.draw.line(screen, GREEN, (0, 239), (width, 239))
-        pygame.draw.line(screen, (0,0,255,255), (0, 206), (width, 206))
         pygame.display.flip()
 
     def insertcoins(self, screen):
@@ -245,9 +258,9 @@ def main():
     enemies = EnemyClass()
     player = PlayerClass()
     shot = ShotClass()
-    shields = ShieldClass(screen)
+    #shields = ShieldClass(screen)
+    saucer = SaucerClass()
 
-    hit = -10
     i = 0
     while True:
         for event in pygame.event.get():
@@ -258,7 +271,7 @@ def main():
         key = pygame.key.get_pressed()
         if key[pygame.K_q]:
             pygame.quit()
-        elif key[pygame.K_SPACE] and shot.active == 0:
+        elif key[pygame.K_SPACE] and shot.cooldown == 0 and shot.active == 0:
             shot.fire(player.refpos[0]+9)
         elif key[pygame.K_RIGHT]:
             player.move(1)
@@ -268,11 +281,10 @@ def main():
         # Draw player
         player.draw_sprite(screen, 0)
 
-
-        for kl in range(4):
+        '''
+        # Move shot and check collisions
+        for _ in range(4):
             if shot.active == 1:
-                print(shot.refpos, shot.active, shot.shots_fired)
-                # Move shot
                 shot.refpos[1] -= 1
                 shot.draw_sprite(screen, shot.active)
                 if shot.refpos[1] == 40:
@@ -286,48 +298,60 @@ def main():
                     row = (enemies.refpos[1]-(shot.refpos[1]-9)) // 16
                     enemies.rack[11*row+cll] = 2
                     enemies.draw_sprite(screen, 11*row+cll)
-                    enemies.rack[11*row+cll] = 0
-                    player.update_score(screen) 
+                    enemies.rack[11*row+cll] = 3
+                    player.update_score(screen, 10)
+                if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == RED:
+                    shot.active = 0
+                    shot.draw_sprite(screen, shot.active)
+                    saucer.draw_sprite(screen, 1)
+                    player.update_score(screen, saucer.score(shot.shots_fired))
+                    saucer.active = 2
+                    saucer.timeto = 600
                 if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == GREEN:
                     shot.active = 0
                     shot.draw_sprite(screen, shot.active)
-                    print(shot.refpos, shot.active)
-                    #x, y = shot.refpos[0], shot.refpos[1]
-                    #buffer = np.array([[1 if screen.get_at((x-3+k, y+j-8)) == GREEN else 0 for k in range(8)] for j in range(8)])
-                    #mask = np.logical_and(buffer, np.logical_not(bm.shot_exploding)).astype(int)
-                    #draw(mask , screen, x-3, y)
-           
-
+                    x, y = shot.refpos[0], shot.refpos[1]
+                    buffer = np.array([[1 if screen.get_at((x-3+k, y+j-8)) ==
+                                        GREEN else 0 for k in range(8)] for j in range(8)])
+                    mask = np.logical_and(buffer, np.logical_not(bm.shot_exploding)).astype(int)
+                    draw(mask, screen, x-3, y)
 
         if shot.active > 1:
             shot.draw_sprite(screen, shot.active)
             shot.active = (shot.active + 1) % 4
+        '''
 
-        # move shot and determine hits
-        '''
-        if shot.active == 1:
-            shot.move(screen)
-            hit = shot.check_collision(screen, enemies)
-            if hit > -1:
-                shot.active = 0
-                shot.draw_sprite(screen, 0)
-                enemies.rack[hit] = 2
-                enemies.draw_sprite(screen, hit)
-                enemies.rack[hit] = 0
-                player.update_score(screen)
-        '''
-        # Move and draw enemies
-        enemies.draw_sprite(screen, i % 55)
+        # Draw and move enemies
+        liveenemies = [idx for idx, value in enumerate(enemies.rack) if value != 0]
+        n = sum([1 for j in enemies.rack if j != 0])
+        enemies.draw_sprite(screen, liveenemies[i % n])
+        if enemies.rack[liveenemies[i % n]] == 3:
+            enemies.rack[liveenemies[i % n]] = 0
 
         i += 1
-        if i % 55 == 0:
+        if i % sum(enemies.rack) == 0:
             enemies.move()
-                
 
-        # Mysterious ship
-
+        '''
         # Enemy shots
 
+        # Mysterious ship
+        saucer.timeto -= 1
+        if saucer.timeto == 0 and len(enemies.rack) > 7:  # and no wiggly shot. Add later
+            saucer.active = 1
+            saucer.refpos = [(saucer.direction(shot)*2) % width, 48]
+
+        if saucer.active == 1:
+            saucer.move()
+            saucer.draw_sprite(screen, saucer.active)
+        if saucer.active > 1:
+            saucer.draw_sprite(screen, saucer.active)
+            saucer.active = (saucer.active + 1) % 4
+
+        '''
+
+        if shot.cooldown > 0:
+            shot.cooldown -= 1
         clock.tick(60)
         pygame.display.flip()
 
