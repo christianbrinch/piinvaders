@@ -60,8 +60,10 @@ class BaseClass():
 
     def position(self, number):
         ''' Return the position on the screen, given the element number '''
-        return (self.refpos[0]+self.spacing*(number % self.cols),
+        position = (self.refpos[0]+self.spacing*(number % self.cols),
                 self.refpos[1]-self.spacing*(number // self.cols))
+        return position
+
 
     def draw_sprite(self, screen, number):
         ''' Draw the element on the screen at its position '''
@@ -74,6 +76,9 @@ class EnemyClass(BaseClass):
     def __init__(self):
         BaseClass.__init__(self, [24, 136], 55, 16, 11)
         self.direction = 1
+        self.edgedetect = 0
+        self.left = 55
+        self.leftidx = [i for i in range(self.left)]
 
     def sprite(self, number):
         ''' Determine which sprite to use, given element number '''
@@ -81,16 +86,34 @@ class EnemyClass(BaseClass):
                    [self.refpos[0] // 2 % 2], bm.alien_exploding, 0*bm.alien_exploding]
         return sprites[self.rack[number]]
 
+    def update(self):
+        ''' Calculate the number of enemies left in the rack '''
+        self.left = sum([1 for i in self.rack if i == 1])
+        self.leftidx = [idx for idx, value in enumerate(self.rack) if value == 1]
+
+
+    def position(self, number):
+        ''' Return the position on the screen, given the element number '''
+        position = (self.refpos[0]+self.spacing*(number % self.cols),
+                self.refpos[1]-self.spacing*(number // self.cols))
+        if position[0] <= 2 and self.direction == -1:
+            self.edgedetect = 1
+        if position[0] >= width-16 and self.direction == 1:
+            self.edgedetect = 1
+        return position
+
+ 
     def move(self):
         ''' Update the reference position
             TODO: Shrink rack if outermost columns are shot
         '''
-        if self.refpos[0] > 0 and self.refpos[0] < width-176:
+        if not self.edgedetect:            
             self.refpos[0] += 2*self.direction
         else:
             self.refpos[1] += 8
             self.direction *= -1
             self.refpos[0] += 2*self.direction
+            self.edgedetect = 0
 
 
 class PlayerClass(BaseClass):
@@ -281,7 +304,7 @@ def main():
         # Draw player
         player.draw_sprite(screen, 0)
 
-        '''
+        
         # Move shot and check collisions
         for _ in range(4):
             if shot.active == 1:
@@ -296,9 +319,9 @@ def main():
                     shot.draw_sprite(screen, shot.active)
                     cll = ((shot.refpos[0])-enemies.refpos[0]) // 16
                     row = (enemies.refpos[1]-(shot.refpos[1]-9)) // 16
-                    enemies.rack[11*row+cll] = 2
+                    enemies.rack[11*row+cll] = 0
                     enemies.draw_sprite(screen, 11*row+cll)
-                    enemies.rack[11*row+cll] = 3
+                    #enemies.rack[11*row+cll] = 3
                     player.update_score(screen, 10)
                 if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == RED:
                     shot.active = 0
@@ -319,18 +342,14 @@ def main():
         if shot.active > 1:
             shot.draw_sprite(screen, shot.active)
             shot.active = (shot.active + 1) % 4
-        '''
+        
 
         # Draw and move enemies
-        liveenemies = [idx for idx, value in enumerate(enemies.rack) if value != 0]
-        n = sum([1 for j in enemies.rack if j != 0])
-        enemies.draw_sprite(screen, liveenemies[i % n])
-        if enemies.rack[liveenemies[i % n]] == 3:
-            enemies.rack[liveenemies[i % n]] = 0
+        enemies.draw_sprite(screen, enemies.leftidx[i])
 
-        i += 1
-        if i % sum(enemies.rack) == 0:
+        if i == 0:
             enemies.move()
+            enemies.update()
 
         '''
         # Enemy shots
@@ -352,6 +371,9 @@ def main():
 
         if shot.cooldown > 0:
             shot.cooldown -= 1
+        i+=1
+        if i == enemies.left:
+            i=0
         clock.tick(60)
         pygame.display.flip()
 
