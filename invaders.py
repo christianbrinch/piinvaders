@@ -107,12 +107,16 @@ class EnemyClass(BaseClass):
         ''' Update the reference position
             TODO: Shrink rack if outermost columns are shot
         '''
+        if self.left == 1 and self.direction == 1:
+            stepsize = 3
+        else:
+            stepsize = 2
         if not self.edgedetect:            
-            self.refpos[0] += 2*self.direction
+            self.refpos[0] += stepsize*self.direction
         else:
             self.refpos[1] += 8
             self.direction *= -1
-            self.refpos[0] += 2*self.direction
+            self.refpos[0] += stepsize*self.direction
             self.edgedetect = 0
 
 
@@ -279,9 +283,10 @@ def main():
     game.board(screen)
 
     enemies = EnemyClass()
+    enemyshot = EnemyShotClass()
     player = PlayerClass()
     shot = ShotClass()
-    #shields = ShieldClass(screen)
+    shields = ShieldClass(screen)
     saucer = SaucerClass()
 
     i = 0
@@ -351,7 +356,7 @@ def main():
             enemies.move()
             enemies.update()
 
-        '''
+        
         # Enemy shots
 
         # Mysterious ship
@@ -367,7 +372,7 @@ def main():
             saucer.draw_sprite(screen, saucer.active)
             saucer.active = (saucer.active + 1) % 4
 
-        '''
+        
 
         if shot.cooldown > 0:
             shot.cooldown -= 1
