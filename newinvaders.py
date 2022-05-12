@@ -11,8 +11,8 @@ WHITE = (255, 255, 255, 255)
 GREEN = (32, 180, 10, 255)
 RED = (252, 72, 8, 255)
 
-objects = {'player': {'refpos': [0, 216],
-                      'active': 1,
+objects = {'player': {'refpos': [7, 216],
+                      'active': 0,
                       'direction': (0, 0),
                       'cooldown': [0],
                       'sprite': [0*bm.tank, bm.tank, 0*bm.tank]
@@ -150,11 +150,11 @@ class GameObject():
         for key in attr:
             self.__dict__[key] = attr[key]
 
-    def move(self):
+    def move(self, edge=0):
         ''' Move the game element '''
         self.refpos = list(map(sum, zip(self.direction, self.refpos)))
-        self.refpos[0] = np.maximum(0, self.refpos[0])
-        self.refpos[0] = np.minimum(self.refpos[0], width-self.sprite[1].shape[1])
+        self.refpos[0] = np.maximum(0+edge, self.refpos[0])
+        self.refpos[0] = np.minimum(self.refpos[0], width-self.sprite[1].shape[1]-edge)
         if (self.refpos[0] == 0 and self.direction[0] < 0) or \
            (self.refpos[0] == width-self.sprite[1].shape[1] and self.direction[0] > 0):
             self.edgeflag = 1
@@ -215,7 +215,6 @@ class SpaceInvaders():
         canvas.write("score<1>_hi-score_score<2>", (8, 8))
         canvas.write("0000____"+str(self.highscore).zfill(4), (24, 24))
         _ = [canvas.drawsprite(bm.shield, (30+45*i, 192)) for i in range(4)]
-        canvas.drawsprite(bm.tank, (0, 216))
         canvas.write("3", (6, 240))
         _ = [canvas.drawsprite(bm.tank,  (i, 240)) for i in [22, 38]]
         canvas.write("credit_"+str(self.credit).zfill(2), (134, 240))
@@ -256,19 +255,23 @@ def main():
         key = pygame.key.get_pressed()
         if key[pygame.K_q]:
             pygame.quit()
-        elif key[pygame.K_SPACE] and plshot.cooldown == 0 and plshot.active == 0:
+        elif key[pygame.K_SPACE] and plshot.cooldown == 0 and plshot.active == 0 and player.active:
             plshot.refpos = tuple(map(sum, zip(player.refpos, (8, 0))))
             plshot.active = 1
             plshot.cooldown = 5
             game.numberofshots += 1
+        elif key[pygame.K_SPACE] and player.active == 0:
+            player.active = 1
+            plshot.cooldown = 5
         elif key[pygame.K_RIGHT]:
             player.direction = (1, 0)
         elif key[pygame.K_LEFT]:
             player.direction = (-1, 0)
 
         # Move player and draw player
-        player.move()
-        player.direction = (0, 0)
+        if player.active:
+            player.move(7)
+            player.direction = (0, 0)
         canvas.drawsprite(player.sprite[player.active], player.refpos)
 
         # Move player's shot and draw shot
@@ -280,6 +283,15 @@ def main():
         canvas.drawsprite(plshot.sprite[plshot.active], plshot.refpos)
         if plshot.active > 1:
             plshot.active = (plshot.active+1) % 4
+        # Has player shot hit alien shot?
+        if plshot.active == 1:
+            for shotnumber in range(1):
+                print(plshot.refpos, alshot[shotnumber].refpos)
+                if plshot.refpos == list(map(sum, zip(alshot[shotnumber].refpos, (1, 11)))):
+                    print("Alien shot hit")
+        # Has player shot hit shield?
+        # Has player shot hit alien?
+        # Has player shot hit saucer?
 
         # Here goes alien shots
         shotnumber = tick % 3
