@@ -360,7 +360,10 @@ def main():
             saucer.active = (saucer.active+1) % 4
 
         # The Aliens
-        number = tick % sum([1 for i in aliens.active if i==1])
+        livealiens = sum([1 for i in aliens.active if i==1])
+        temp = [idx for idx, i in enumerate(aliens.active) if i != 0]
+        number = tick % livealiens
+        joe = temp[number]
         aliens.edgeflag = np.logical_or(aliens.edgeflag, aliens.edgedetect(number))
         if number == 0:  # Move the rack once every cycle through rack
             if aliens.edgeflag:  # Drop rack if edge has been detected
@@ -369,19 +372,15 @@ def main():
                 aliens.edgeflag = 0
             aliens.move()
 
-        while aliens.active[joe] == 0:
-            joe = (joe+1)%55
-
         if aliens.active[joe] == 1:
             canvas.drawsprite(aliens.sprite[aliens.active[joe]][number//22][(tick//55) % 2],
                           (aliens.refpos[0]+16*(joe % 11), aliens.refpos[1]-16*(joe // 11)))
         else:
             canvas.drawsprite(aliens.sprite[aliens.active[joe]],
-                          (aliens.refpos[0]+16*(joe % 11), aliens.refpos[1]-16*(joe // 11)))
+                          (aliens.refpos[0]+16*(joe % 11), aliens.refpos[1]+8-16*(joe // 11)))
             aliens.active[joe] = (aliens.active[joe]+1) % 4
 
  
-        joe = (joe+1)%55
 
 
         tick += 1
