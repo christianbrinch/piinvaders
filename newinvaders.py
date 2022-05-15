@@ -243,7 +243,7 @@ def main():
     saucer = GameObject(objects["saucer"])
 
     tick = 0
-
+    joe = 0
     running = True
 
     while running:
@@ -283,16 +283,29 @@ def main():
         canvas.drawsprite(plshot.sprite[plshot.active], plshot.refpos)
         if plshot.active > 1:
             plshot.active = (plshot.active+1) % 4
-        # Has player shot hit alien shot?
         if plshot.active == 1:
-            for shotnumber in range(1):
-                print(plshot.refpos, alshot[shotnumber].refpos)
-                if plshot.refpos == list(map(sum, zip(alshot[shotnumber].refpos, (1, 11)))):
-                    print("Alien shot hit")
+        # Has player shot hit alien shot?
         # Has player shot hit shield?
         # Has player shot hit alien?
-        # Has player shot hit saucer?
+            for number, status in enumerate(aliens.active):
+                if status == 1:
+                    alienpos = (aliens.refpos[0]+16*(number % 11), aliens.refpos[1]-16*(number // 11))
+                    if np.intersect1d(np.arange(plshot.sprite[1].shape[0])+plshot.refpos[0],
+                                  np.arange(aliens.sprite[1][0].shape[0])+alienpos[0]).size > 0 and \
+                       np.intersect1d(np.arange(plshot.sprite[1].shape[1])+plshot.refpos[1],
+                                  np.arange(aliens.sprite[1][0].shape[1])+alienpos[1]).size > 0:
+                        aliens.active[number] = 2
+                        plshot.active = 3
 
+         # Has player shot hit saucer?
+            if saucer.active == 1:
+                if np.intersect1d(np.arange(plshot.sprite[1].shape[0])+plshot.refpos[0],
+                                  np.arange(saucer.sprite[1].shape[0])+saucer.refpos[0]).size > 0 and \
+                   np.intersect1d(np.arange(plshot.sprite[1].shape[1])+plshot.refpos[1],
+                                  np.arange(saucer.sprite[1].shape[1])+saucer.refpos[1]).size > 0:
+                    saucer.active = 2
+                    plshot.active = 3
+ 
         # Here goes alien shots
         shotnumber = tick % 3
         alshot[shotnumber].cooldown = np.maximum(alshot[shotnumber].cooldown-1, 0)
@@ -343,11 +356,11 @@ def main():
             if saucer.edgedetect():
                 saucer.active = 3
         canvas.drawsprite(saucer.sprite[saucer.active], saucer.refpos)
-        if saucer.active > 1:
+        if saucer.active > 1 and tick%55 == 0:
             saucer.active = (saucer.active+1) % 4
 
         # The Aliens
-        number = tick % 55
+        number = tick % sum([1 for i in aliens.active if i==1])
         aliens.edgeflag = np.logical_or(aliens.edgeflag, aliens.edgedetect(number))
         if number == 0:  # Move the rack once every cycle through rack
             if aliens.edgeflag:  # Drop rack if edge has been detected
@@ -355,8 +368,21 @@ def main():
                 aliens.direction = (-1*aliens.direction[0], 0)
                 aliens.edgeflag = 0
             aliens.move()
-        canvas.drawsprite(aliens.sprite[aliens.active[0]][number//22][(tick//55) % 2],
-                          (aliens.refpos[0]+16*(number % 11), aliens.refpos[1]-16*(number // 11)))
+
+        while aliens.active[joe] == 0:
+            joe = (joe+1)%55
+
+        if aliens.active[joe] == 1:
+            canvas.drawsprite(aliens.sprite[aliens.active[joe]][number//22][(tick//55) % 2],
+                          (aliens.refpos[0]+16*(joe % 11), aliens.refpos[1]-16*(joe // 11)))
+        else:
+            canvas.drawsprite(aliens.sprite[aliens.active[joe]],
+                          (aliens.refpos[0]+16*(joe % 11), aliens.refpos[1]-16*(joe // 11)))
+            aliens.active[joe] = (aliens.active[joe]+1) % 4
+
+ 
+        joe = (joe+1)%55
+
 
         tick += 1
         clock.tick(60)
