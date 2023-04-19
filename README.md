@@ -1,2 +1,2 @@
-# piinvaders
+# pyinvaders
 A Space Invaders remake 

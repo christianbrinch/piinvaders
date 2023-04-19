@@ -3,265 +3,205 @@
 import numpy as np
 import pygame
 import bitmaps as bm
-pygame.init()
+from PIL import Image
 
-size = width, height = 224, 256
+SIZE = height, width = 256, 224
 BLACK = (0, 0, 0, 255)
 WHITE = (255, 255, 255, 255)
 GREEN = (32, 180, 10, 255)
 RED = (252, 72, 8, 255)
 
+objects = {'player': {'refpos': [7, 216],
+                      'active': 0,
+                      'direction': (0, 0),
+                      'cooldown': [0],
+                      'sprite': [0*bm.tank, bm.tank, 0*bm.tank]
+                      },
+           'plshot': {'refpos': [0, 0],
+                      'active': 0,
+                      'direction': (0, -4),
+                      'cooldown': 0,
+                      'sprite': [0*bm.shot,
+                                 bm.shot,
+                                 bm.shot_exploding,
+                                 0*bm.shot_exploding]
+                      },
+           'saucer': {'refpos': [0, 40],
+                      'active': 0,
+                      'direction': (0, 0),
+                      'cooldown': 600,
+                      'sprite': [0*bm.saucer,
+                                 bm.saucer,
+                                 bm.saucer_exploding,
+                                 0*bm.saucer_exploding]
+                      },
+           'aliens': {'refpos': [24, 120],
+                      'active': [1 for _ in range(55)],
+                      'direction': (2, 0),
+                      'cooldown': [0],
+                      'sprite': [0*bm.alien_exploding,
+                                 bm.aliens,
+                                 bm.alien_exploding,
+                                 0*bm.alien_exploding]
+                      },
+           'rolling': {'refpos': [0, 0],
+                       'active': 0,
+                       'direction': (0, 4),
+                       'cooldown': 48,
+                       'sprite': [4*[0*bm.shot],
+                                  bm.rolling,
+                                  4*[bm.alien_shot_exploding],
+                                  4*[0*bm.alien_shot_exploding]]
+                       },
+           'plunger': {'refpos': [0, 0],
+                       'active': 0,
+                       'direction': (0, 4),
+                       'cooldown': 48,
+                       'sprite': [4*[0*bm.shot],
+                                  bm.plunger,
+                                  4*[bm.alien_shot_exploding],
+                                  4*[0*bm.alien_shot_exploding]]
+                       },
+           'squigly': {'refpos': [0, 0],
+                       'active': 0,
+                       'direction': (0, 4),
+                       'cooldown': 48,
+                       'sprite': [4*[0*bm.shot],
+                                  bm.squigly,
+                                  4*[bm.alien_shot_exploding],
+                                  4*[0*bm.alien_shot_exploding]]
+                       },
 
-def overlay(x, y):
-    ''' Emulate the gel overlay '''
-    if 31 < y <= 63:
-        # Red/orange top part
-        color = RED
-    elif 183 < y <= 238:
-        # Green shield and player
-        color = GREEN
-    elif (y > 239) and (24 < x < 135):
-        # Green extra lives
-        color = GREEN
-    else:
-        # everything else white
-        color = WHITE
-
-    return [BLACK, color]
+           }
 
 
-def write(text, screen, x, y):
-    ''' Write text to the screen at position (x,y) '''
-    for position, letter in enumerate(text):
-        draw(bm.fonts[letter], screen, 8*position+x, y)
+def alienscore(row):
+    ''' Determine the score for hitting an alien '''
+    scoretable = [10, 10, 20, 20, 30]
+    return scoretable[row]
 
 
-def draw(sprite, screen, x, y):
-    ''' Draw a sprite on the screen at position (x,y) '''
-    for j, line in enumerate(sprite):
-        for i, pix in enumerate(line):
-            color = overlay(x+i, y-len(sprite)+j)
-            pygame.draw.line(screen, color[pix], (x+i, y-len(sprite)+j), (x+i, y-len(sprite)+j))
-
-
-class BaseClass():
-    ''' A base class for all game elements (player, enemies, shots).
-        To be extended into specific classes below
+def saucerscore(shots):
+    ''' Determine the score for hitting the saucer.
+        It should be modulo 16, but the original Space Invaders has a bug.
     '''
-
-    def __init__(self, refpos, racksize, spacing, cols):
-        self.refpos = refpos
-        self.rack = np.array([1 for i in range(racksize)])
-        self.spacing = spacing
-        self.cols = cols
-
-    def sprite(self, number):
-        ''' Dummy method - will be overwritten '''
-
-    def position(self, number):
-        ''' Return the position on the screen, given the element number '''
-        position = (self.refpos[0]+self.spacing*(number % self.cols),
-                self.refpos[1]-self.spacing*(number // self.cols))
-        return position
+    scoretable = [100, 50, 50, 100, 150, 100, 100, 50, 300, 100, 100, 100, 50, 150, 100, 50]
+    return scoretable[shots % 15]
 
 
-    def draw_sprite(self, screen, number):
-        ''' Draw the element on the screen at its position '''
-        draw(self.sprite(number), screen, *self.position(number))
+def alienreloadtime(score):
+    ''' Given player score, set the alien reload time '''
+    reloadlimits = [200, 1000, 2000, 3000]
+    reloadtimes = [48, 16, 11, 8, 7]
+    return reloadtimes[np.searchsorted(reloadlimits, score)]
 
 
-class EnemyClass(BaseClass):
-    ''' An extenstion of the base class to hold the enemy rack '''
+def alienfirecolumn(tick):
+    ''' This table gives the column from which the aliens fire '''
+    column = [1, 7, 1, 1, 1, 4, 11, 1, 6, 3, 1, 1, 11, 9, 2, 8]
+    return column[tick]
 
-    def __init__(self):
-        BaseClass.__init__(self, [24, 136], 55, 16, 11)
-        self.direction = 1
-        self.edgedetect = 0
-        self.left = 55
-        self.leftidx = [i for i in range(self.left)]
 
-    def sprite(self, number):
-        ''' Determine which sprite to use, given element number '''
-        sprites = [0*bm.alien_exploding, bm.aliens[number//22]
-                   [self.refpos[0] // 2 % 2], bm.alien_exploding, 0*bm.alien_exploding]
-        return sprites[self.rack[number]]
+pygame.init()
+
+
+class CanvasClass(np.ndarray):
+    ''' A class to contain everything related to drawing on screen '''
+
+    def __init__(self, SIZE):
+        np.ndarray.__init__(self)
+        self.screen = pygame.display.set_mode((SIZE[1], SIZE[0]))
+
+    def drawsprite(self, bitmap, position):
+        ''' Put bitmap on the canvas at position '''
+        self[position[1]:position[1]+bitmap.shape[0],
+             position[0]:position[0]+bitmap.shape[1]] = bitmap
+
+    def write(self, text, position):
+        ''' Write text to the screen at position '''
+        for idx, letter in enumerate(text):
+            self.drawsprite(bm.fonts[letter], tuple(map(sum, zip(position, (8*idx, 0)))))
+
+    def overlayfilter(self):
+        ''' Filter the canvas through the overlay gel '''
+        return super() * bm.overlay_gel
 
     def update(self):
-        ''' Calculate the number of enemies left in the rack '''
-        self.left = sum([1 for i in self.rack if i == 1])
-        self.leftidx = [idx for idx, value in enumerate(self.rack) if value == 1]
+        ''' Update screen and flip display '''
+        surface = pygame.surfarray.make_surface(self.overlayfilter().T)
+        for idx, color in enumerate([BLACK, WHITE, GREEN, RED]):
+            surface.set_palette_at(idx, color)
+        self.screen.blit(surface, (0, 0))
+        pygame.display.update()
 
 
-    def position(self, number):
-        ''' Return the position on the screen, given the element number '''
-        position = (self.refpos[0]+self.spacing*(number % self.cols),
-                self.refpos[1]-self.spacing*(number // self.cols))
-        if position[0] <= 2 and self.direction == -1:
-            self.edgedetect = 1
-        if position[0] >= width-16 and self.direction == 1:
-            self.edgedetect = 1
-        return position
+class GameObject():
+    ''' A base class to contain each game element '''
 
- 
-    def move(self):
-        ''' Update the reference position
-            TODO: Shrink rack if outermost columns are shot
-        '''
-        if self.left == 1 and self.direction == 1:
-            stepsize = 3
-        else:
-            stepsize = 2
-        if not self.edgedetect:            
-            self.refpos[0] += stepsize*self.direction
-        else:
-            self.refpos[1] += 8
-            self.direction *= -1
-            self.refpos[0] += stepsize*self.direction
-            self.edgedetect = 0
+    def __init__(self, attr):
+        self.edgeflag = 0
+        self.refpos = []
+        self.active = None
+        self.direction = None
+        self.cooldown: None
+        self.sprite = []
+        self.movecounter = 0
 
+        for key in attr:
+            self.__dict__[key] = attr[key]
 
-class PlayerClass(BaseClass):
-    ''' An extenstion of the base class to hold the player.
-        This class will only ever hold one element.
-    '''
+    def move(self, edge=0):
+        ''' Move the game element '''
+        self.refpos = list(map(sum, zip(self.direction, self.refpos)))
+        self.refpos[0] = np.maximum(0+edge, self.refpos[0])
+        self.refpos[0] = np.minimum(self.refpos[0], width-self.sprite[1].shape[1]-edge)
+        if (self.refpos[0] == 0 and self.direction[0] < 0) or \
+           (self.refpos[0] == width-self.sprite[1].shape[1] and self.direction[0] > 0):
+            self.edgeflag = 1
 
-    def __init__(self):
-        BaseClass.__init__(self, [0, 223], 1, 1, 1)
-        self.lives_left = 3
-        self.score = 0
+    def edgedetect(self, number=0):
+        ''' Check if sprite has hit the border. TODO: Remove code from move() '''
+        if self.refpos[1] <= 32 or self.refpos[1]+8 >= 236:
+            return True
+        xcoord = (self.refpos[0]+16*(number % 11))
+        if (xcoord == 0 and self.direction[0] < 0) or \
+           (xcoord == width-len(self.sprite[2][0]) and self.direction[0] > 0):
+            return True
+        return False
 
-    def sprite(self, number):
-        ''' Select player sprite '''
-        return bm.tank
-
-    def move(self, direction):
-        ''' Update player position '''
-        self.refpos[0] += direction
-        self.refpos[0] = np.maximum(0, self.refpos[0])
-        self.refpos[0] = np.minimum(self.refpos[0], width-16)
-
-    def update_score(self, screen, score):
-        ''' Update score board '''
-        self.score += score
-        write("___"+str(self.score).zfill(4), screen, 0, 31)
+    def animate(self):
+        ''' write some code here '''
+        pass
 
 
-class ShotClass(BaseClass):
-    ''' An extenstion of the base class to hold the player shot.
-        This class will only ever hold one element.
-    '''
-
-    def __init__(self):
-        BaseClass.__init__(self, [width-1, height-1], 0, 1, 1)
-        self.active = 0
-        self.cooldown = 0
-        self.shots_fired = 0
-
-    def position(self, number):
-        return tuple(self.refpos)
-
-    def sprite(self, number):
-        ''' Select shot sprite '''
-        sprites = [bm.shot*0, bm.shot, bm.shot_exploding, bm.shot_exploding*0]
-        return sprites[self.active]
-
-    def fire(self, position):
-        ''' Initiate a shot '''
-        self.active = 1
-        self.cooldown = 10
-        self.refpos = [position, 215]
-        self.shots_fired += 1
-
-    def move(self):
-        ''' Update shot position '''
-
-    def check_collision(self, screen, enemies):
-        ''' Check if the shot hits anything '''
-
-
-class ShieldClass(BaseClass):
-    ''' An extension to the base class to hold the four shields '''
-
-    def __init__(self, screen):
-        BaseClass.__init__(self, [31, 207], 4, 45, 4)
-        for i in [0, 1, 2, 3]:
-            self.draw_sprite(screen, i)
-
-    def sprite(self, number):
-        ''' Select shield sprite '''
-        return bm.shield
-
-
-class SaucerClass(BaseClass):
-    ''' An extension to the base class to hold the saucer '''
-
-    def __init__(self):
-        BaseClass.__init__(self, [0, 0], 1, 1, 1)
-        self.timeto = 600
-        self.active = 0
-        self.step = 0
-
-    def sprite(self, number):
-        ''' Select saucer sprite '''
-        sprites = [0*bm.saucer, bm.saucer, bm.saucer_exploding, 0*bm.saucer]
-        return sprites[number]
-
-    def direction(self, shot):
-        ''' Determine the saucer direction based on the least significant bit of
-            the number of shots fires.
-        '''
-        self.step = 2*(shot.shots_fired % 2) - 1
-        return self.step
-
-    def score(self, shots):
-        ''' Determine the score for hitting the saucer.
-            It should be modulo 16, but the original Space Invaders has a bug.
-        '''
-        scoretable = [100, 50, 50, 100, 150, 100, 100, 50, 300, 100, 100, 100, 50, 150, 100, 50]
-        return scoretable[shots % 15]
-
-    def move(self):
-        ''' Update player position '''
-        self.refpos[0] += self.step
-        if self.refpos[0] < -24 or self.refpos[0] > width:
-            self.active = 0
-            self.timeto = 600
-
-
-class GameControl():
+class SpaceInvaders():
     ''' A class to contain all the game house keeping '''
 
     def __init__(self):
         self.highscore = 0
+        self.score = 0
         self.credit = 0
+        self.numberofshots = 0
 
-    def welcomescreen(self, screen):
+    def welcomescreen(self, canvas):
         ''' Draw the welcome screen and wait for game to start '''
-        screen.fill(BLACK)
-        write("_score<1>_hi-score_score<2>", screen, 0, 15)
-        write("___0000____"+str(self.highscore).zfill(4), screen, 0, 31)
-        write("play", screen, 100, 64)
-        write("space_invaders", screen, 56, 88)
-        pygame.display.flip()
-
-    def board(self, screen):
-        ''' Draw the initial game board '''
-        screen.fill(BLACK)
-        write("_score<1>_hi-score_score<2>", screen, 0, 15)
-        write("___0000____"+str(self.highscore).zfill(4), screen, 0, 31)
-        draw(bm.tank, screen, 0, 223)
-        write("3", screen, 8, 247)
-        draw(bm.tank, screen, 25, 247)
-        draw(bm.tank, screen, 41, 247)
-        write("credit_"+str(self.credit).zfill(2), screen, 136, 247)
-        pygame.draw.line(screen, GREEN, (0, 239), (width, 239))
-        pygame.display.flip()
-
-    def insertcoins(self, screen):
-        ''' Wait for coins and start game '''
+        canvas.fill(0)
+        canvas.write("score<1>_hi-score_score<2>", (8, 8))
+        canvas.write("0000____"+str(self.highscore).zfill(4)+"______0000", (24, 24))
+        canvas.write("play", (96, 64))
+        canvas.write("space_invaders", (56, 88))
+        canvas.write("*score_advance_table*", (32, 120))
+        canvas.drawsprite(bm.saucer, (60, 136))
+        canvas.write("=?_mystery", (80, 136))
+        canvas.drawsprite(bm.alienC[0][2:], (64, 144))
+        canvas.write("=30_points", (80, 152))
+        canvas.drawsprite(bm.alienB[1], (64, 160))
+        canvas.write("=20_points", (80, 168))
+        canvas.drawsprite(bm.alienA[0], (64, 176))
+        canvas.write("=10_points", (80, 184))
         while True:
-            write("credit_"+str(self.credit).zfill(2), screen, 136, 247)
-            pygame.display.flip()
+            canvas.write("credit_"+str(self.credit).zfill(2), (134, 240))
+            canvas.update()
             for event in pygame.event.get():
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_c:
@@ -270,117 +210,219 @@ class GameControl():
                         self.credit -= 1
                         return
 
+    def board(self, canvas):
+        ''' Draw the initial game board '''
+        canvas.fill(0)
+        canvas.write("score<1>_hi-score_score<2>", (8, 8))
+        canvas.write(str(self.score).zfill(4)+"____"+str(self.highscore).zfill(4), (24, 24))
+        _ = [canvas.drawsprite(bm.shield, (30+45*i, 192)) for i in range(4)]
+        canvas.write("3", (6, 240))
+        _ = [canvas.drawsprite(bm.tank,  (i, 240)) for i in [22, 38]]
+        canvas.write("credit_"+str(self.credit).zfill(2), (134, 240))
+        canvas.drawsprite(np.array([[1 for _ in range(224)]]), (0, 239))
+        canvas.update()
+
+
+# im = Image.fromarray(canvas*250)
+# im.save("screen.gif")
+
 
 def main():
     ''' Main game loop '''
     clock = pygame.time.Clock()
-    screen = pygame.display.set_mode(size)
+    canvas = CanvasClass(SIZE)
+    game = SpaceInvaders()
 
-    game = GameControl()
+    game.welcomescreen(canvas)
+    game.score = 0
+    game.board(canvas)
 
-    game.welcomescreen(screen)
-    game.insertcoins(screen)
-    game.board(screen)
+    aliens = GameObject(objects["aliens"])
+    alshot = [GameObject(objects["rolling"]), GameObject(
+        objects["plunger"]), GameObject(objects["squigly"])]
+    player = GameObject(objects["player"])
+    plshot = GameObject(objects["plshot"])
+    saucer = GameObject(objects["saucer"])
 
-    enemies = EnemyClass()
-    enemyshot = EnemyShotClass()
-    player = PlayerClass()
-    shot = ShotClass()
-    shields = ShieldClass(screen)
-    saucer = SaucerClass()
+    tick = 0
+    #joe = 0
+    livealiens = 55
+    running = True
 
-    i = 0
-    while True:
+    while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
+                running = False
 
-        # Get player input and move player
+        
+
+        # Get player input
         key = pygame.key.get_pressed()
         if key[pygame.K_q]:
             pygame.quit()
-        elif key[pygame.K_SPACE] and shot.cooldown == 0 and shot.active == 0:
-            shot.fire(player.refpos[0]+9)
+        elif key[pygame.K_SPACE] and plshot.cooldown == 0 and plshot.active == 0 and player.active:
+            plshot.refpos = tuple(map(sum, zip(player.refpos, (8, 0))))
+            plshot.active = 1
+            plshot.cooldown = 5
+            game.numberofshots += 1
+        elif key[pygame.K_SPACE] and player.active == 0:
+            player.active = 1
+            plshot.cooldown = 5
         elif key[pygame.K_RIGHT]:
-            player.move(1)
+            player.direction = (1, 0)
         elif key[pygame.K_LEFT]:
-            player.move(-1)
+            player.direction = (-1, 0)
 
-        # Draw player
-        player.draw_sprite(screen, 0)
+        # Move player and draw player
+        if player.active:
+            player.move(7)
+            player.direction = (0, 0)
+        canvas.drawsprite(player.sprite[player.active], player.refpos)
 
         
-        # Move shot and check collisions
-        for _ in range(4):
-            if shot.active == 1:
-                shot.refpos[1] -= 1
-                shot.draw_sprite(screen, shot.active)
-                if shot.refpos[1] == 40:
-                    shot.active = 2
-                    shot.refpos[0] += -3
-                    shot.refpos[1] += 3
-                if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == WHITE:
-                    shot.active = 0
-                    shot.draw_sprite(screen, shot.active)
-                    cll = ((shot.refpos[0])-enemies.refpos[0]) // 16
-                    row = (enemies.refpos[1]-(shot.refpos[1]-9)) // 16
-                    enemies.rack[11*row+cll] = 0
-                    enemies.draw_sprite(screen, 11*row+cll)
-                    #enemies.rack[11*row+cll] = 3
-                    player.update_score(screen, 10)
-                if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == RED:
-                    shot.active = 0
-                    shot.draw_sprite(screen, shot.active)
-                    saucer.draw_sprite(screen, 1)
-                    player.update_score(screen, saucer.score(shot.shots_fired))
+        # Move player's shot and draw shot
+        plshot.cooldown = np.maximum(plshot.cooldown-1, 0)
+        if plshot.active > 1:
+            plshot.active = (plshot.active+1) % 4
+        if plshot.active == 1:
+            plshot.move()
+            if plshot.edgedetect():
+                plshot.active = 2
+        canvas.drawsprite(plshot.sprite[plshot.active], plshot.refpos)
+
+        if plshot.active == 1:
+            print(plshot.refpos, canvas.screen.get_at(plshot.refpos))
+            if sum([sum(canvas.screen.get_at([plshot.refpos[0],plshot.refpos[1]+i])[:2]) for i in range(4)]) != 0:
+                # Shot has hit something. What is it?
+                # Is it an alien?
+                for number, status in enumerate(aliens.active):
+                    if status == 1:
+                        alienpos = (aliens.refpos[0]+16*(number % 11), aliens.refpos[1]-16*(number // 11))
+                        if plshot.refpos[0] >= alienpos[0] and plshot.refpos[0] <= alienpos[0]+16 and plshot.refpos[1] >= alienpos[1] and plshot.refpos[1] <= alienpos[1]+12:
+                            canvas.drawsprite(bm.alien_exploding, [alienpos[0],alienpos[1]+8])
+                            aliens.active[number] = 2
+                            plshot.active = 3
+                            game.score += alienscore(number // 11)
+                
+                # Or is it an alien shot?
+                # pass
+                # If not, then is is either a shield or the saucer
+                # Has player shot hit shield?
+                if plshot.refpos[1] > 170:
+                    # Could be shield
+                    target = canvas[plshot.refpos[1]:plshot.refpos[1]+8,
+                                 plshot.refpos[0]-4:plshot.refpos[0]+4]
+                    canvas.drawsprite(target-(np.logical_and(target,bm.shot_exploding).astype(int)), [plshot.refpos[0]-4,plshot.refpos[1]])
+                    plshot.active=3
+                # Then it must be the saucer
+                if plshot.refpos[1] < 48 and saucer.active == 1:
                     saucer.active = 2
-                    saucer.timeto = 600
-                if screen.get_at((shot.refpos[0], shot.refpos[1]-6)) == GREEN:
-                    shot.active = 0
-                    shot.draw_sprite(screen, shot.active)
-                    x, y = shot.refpos[0], shot.refpos[1]
-                    buffer = np.array([[1 if screen.get_at((x-3+k, y+j-8)) ==
-                                        GREEN else 0 for k in range(8)] for j in range(8)])
-                    mask = np.logical_and(buffer, np.logical_not(bm.shot_exploding)).astype(int)
-                    draw(mask, screen, x-3, y)
+                    plshot.active = 3
+                    game.score += saucerscore(game.numberofshots)
 
-        if shot.active > 1:
-            shot.draw_sprite(screen, shot.active)
-            shot.active = (shot.active + 1) % 4
-        
+            
 
-        # Draw and move enemies
-        enemies.draw_sprite(screen, enemies.leftidx[i])
 
-        if i == 0:
-            enemies.move()
-            enemies.update()
+
 
         
-        # Enemy shots
+        '''
+        # Has player shot hit alien?
+            for number, status in enumerate(aliens.active):
+                if status == 1:
+                    alienpos = (aliens.refpos[0]+16*(number % 11), aliens.refpos[1]-16*(number // 11))
+                    if np.intersect1d(np.arange(plshot.sprite[1].shape[0])+plshot.refpos[0],
+                                  np.arange(aliens.sprite[1][0].shape[0])+alienpos[0]).size > 0 and \
+                       np.intersect1d(np.arange(plshot.sprite[1].shape[1])+plshot.refpos[1],
+                                  np.arange(aliens.sprite[1][0].shape[1])+alienpos[1]).size > 0:
+                        aliens.active[number] = 2
+                        plshot.active = 3
+        
+        
+        # Here goes alien shots
+        shotnumber = tick % 3
+        alshot[shotnumber].cooldown = np.maximum(alshot[shotnumber].cooldown-1, 0)
+        if shotnumber == 0:
+            shotcolumn = canvas[48:192, player.refpos[0]+7]
+        elif shotnumber == 1:
+            column = alienfirecolumn(tick % 15)-1
+            shotcolumn = canvas[48:192, (aliens.refpos[0]+16*column)+8]
+        else:
+            column = alienfirecolumn((tick % 9)+6)
+            shotcolumn = canvas[48:192, (aliens.refpos[0]+16*column)+8]
 
-        # Mysterious ship
-        saucer.timeto -= 1
-        if saucer.timeto == 0 and len(enemies.rack) > 7:  # and no wiggly shot. Add later
-            saucer.active = 1
-            saucer.refpos = [(saucer.direction(shot)*2) % width, 48]
+        if min([item.movecounter for idx, item in enumerate(alshot) if idx != shotnumber]) >= alshot[shotnumber].cooldown \
+                and sum(shotcolumn) != 0 and alshot[shotnumber].active == 0:
+            alshot[shotnumber].active = 1
+            alshot[shotnumber].movecounter = 0
+            alshot[shotnumber].cooldown = alienreloadtime(0)
+            for idx, ypos in enumerate(reversed(shotcolumn)):
+                if ypos == 1:
+                    break
+            if shotnumber == 0:
+                alshot[shotnumber].refpos = [player.refpos[0]+8, 192-idx]
+            else:
+                alshot[shotnumber].refpos = [(aliens.refpos[0]+16*column)+8, 192-idx]
 
-        if saucer.active == 1:
+        if alshot[shotnumber].active == 1:
+            alshot[shotnumber].move()
+            alshot[shotnumber].movecounter += 1
+            if alshot[shotnumber].edgedetect():
+                alshot[shotnumber].active = 2
+
+        canvas.drawsprite(alshot[shotnumber].sprite[alshot[shotnumber].active]
+                          [tick % 4], alshot[shotnumber].refpos)
+
+        if alshot[shotnumber].active > 1:
+            alshot[shotnumber].active = (alshot[shotnumber].active+1) % 4
+        '''
+        # Flying saucer
+        saucer.cooldown = np.maximum(saucer.cooldown-1, 0)
+        if saucer.active == 0:  # Saucer is inactive, check if it is time for saucer
+            if saucer.cooldown == 0:  # add check for squigly and alien rack size
+                saucer.cooldown = 600
+                saucer.active = 1
+                saucer.direction = (2*(game.numberofshots % 2) - 1, 0)
+                saucer.refpos[0] = saucer.direction[0] % (width-24)
+        if saucer.active == 1:  # Saucer is active, move it and check if escaped
             saucer.move()
-            saucer.draw_sprite(screen, saucer.active)
-        if saucer.active > 1:
-            saucer.draw_sprite(screen, saucer.active)
-            saucer.active = (saucer.active + 1) % 4
+            if saucer.edgedetect():
+                saucer.active = 3
+        canvas.drawsprite(saucer.sprite[saucer.active], saucer.refpos)
+        if saucer.active > 1 and tick%55 == 0:
+            saucer.active = (saucer.active+1) % 4
 
         
+        # The Aliens
 
-        if shot.cooldown > 0:
-            shot.cooldown -= 1
-        i+=1
-        if i == enemies.left:
-            i=0
+        number = tick % livealiens
+        
+        aliens.edgeflag = np.logical_or(aliens.edgeflag, aliens.edgedetect(number))
+        if number == 0:  # Move the rack once every cycle through rack
+            if aliens.edgeflag:  # Drop rack if edge has been detected
+                aliens.refpos = list(map(sum, zip(aliens.refpos, (0, 8))))
+                aliens.direction = (-1*aliens.direction[0], 0)
+                aliens.edgeflag = 0
+            aliens.move()
+            livealiens = sum([1 for i in aliens.active if i ==1 ])
+            temp = [idx for idx, i in enumerate(aliens.active) if i != 0]
+
+        joe = temp[number]
+
+        p = -aliens.active[joe] + 2
+        canvas.drawsprite(p*aliens.sprite[1][joe//22][(tick//55) % 2],
+                          (aliens.refpos[0]+16*(joe % 11), aliens.refpos[1]-16*(joe // 11)))
+        if aliens.active[joe] == 2:
+            aliens.active[joe] = 0
+        
+ 
+ 
+
+
+        tick += 1
+        canvas.write(str(game.score).zfill(4)+"____"+str(game.highscore).zfill(4), (24, 24))
         clock.tick(60)
-        pygame.display.flip()
+        canvas.update()
 
 
 if __name__ == '__main__':
