@@ -230,7 +230,7 @@ rolling = np.array([
               ])
 
 
-#alshot = np.array([rolling, plunger, squigly])
+alshot = np.array([rolling, plunger, squigly])
 
 
 

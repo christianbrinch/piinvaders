@@ -15,63 +15,36 @@ objects = {'player': {'refpos': [7, 216],
                       'active': 0,
                       'direction': (0, 0),
                       'cooldown': [0],
-                      'sprite': [0*bm.tank, bm.tank, 0*bm.tank]
+                      'sprite': [bm.tank]
                       },
            'plshot': {'refpos': [0, 0],
                       'active': 0,
                       'direction': (0, -4),
                       'cooldown': 0,
-                      'sprite': [0*bm.shot,
-                                 bm.shot,
-                                 bm.shot_exploding,
-                                 0*bm.shot_exploding]
+                      'sprite': [bm.shot,
+                                 bm.shot_exploding]
                       },
            'saucer': {'refpos': [0, 40],
                       'active': 0,
                       'direction': (0, 0),
                       'cooldown': 600,
-                      'sprite': [0*bm.saucer,
-                                 bm.saucer,
-                                 bm.saucer_exploding,
-                                 0*bm.saucer_exploding]
+                      'sprite': [bm.saucer,
+                                 bm.saucer_exploding]
                       },
            'aliens': {'refpos': [24, 120],
                       'active': [1 for _ in range(55)],
                       'direction': (2, 0),
                       'cooldown': [0],
-                      'sprite': [0*bm.alien_exploding,
-                                 bm.aliens,
-                                 bm.alien_exploding,
-                                 0*bm.alien_exploding]
+                      'sprite': [bm.aliens,
+                                 bm.alien_exploding]
                       },
-           'rolling': {'refpos': [0, 0],
+           'alshot': {'refpos': [0, 0],
                        'active': 0,
                        'direction': (0, 4),
                        'cooldown': 48,
-                       'sprite': [4*[0*bm.shot],
-                                  bm.rolling,
-                                  4*[bm.alien_shot_exploding],
-                                  4*[0*bm.alien_shot_exploding]]
+                       'sprite': [bm.alshot,
+                                  bm.alien_shot_exploding]
                        },
-           'plunger': {'refpos': [0, 0],
-                       'active': 0,
-                       'direction': (0, 4),
-                       'cooldown': 48,
-                       'sprite': [4*[0*bm.shot],
-                                  bm.plunger,
-                                  4*[bm.alien_shot_exploding],
-                                  4*[0*bm.alien_shot_exploding]]
-                       },
-           'squigly': {'refpos': [0, 0],
-                       'active': 0,
-                       'direction': (0, 4),
-                       'cooldown': 48,
-                       'sprite': [4*[0*bm.shot],
-                                  bm.squigly,
-                                  4*[bm.alien_shot_exploding],
-                                  4*[0*bm.alien_shot_exploding]]
-                       },
-
            }
 
 
@@ -102,7 +75,7 @@ def alienfirecolumn(tick):
     return column[tick]
 
 
-pygame.init()
+
 
 
 class CanvasClass(np.ndarray):
@@ -185,9 +158,6 @@ class SpaceInvaders():
 
     def welcomescreen(self, canvas):
         ''' Draw the welcome screen and wait for game to start '''
-        canvas.fill(0)
-        canvas.write("score<1>_hi-score_score<2>", (8, 8))
-        canvas.write("0000____"+str(self.highscore).zfill(4)+"______0000", (24, 24))
         canvas.write("play", (96, 64))
         canvas.write("space_invaders", (56, 88))
         canvas.write("*score_advance_table*", (32, 120))
@@ -210,22 +180,38 @@ class SpaceInvaders():
                         self.credit -= 1
                         return
 
-    def board(self, canvas):
-        ''' Draw the initial game board '''
-        canvas.fill(0)
+    def header(self, canvas):
         canvas.write("score<1>_hi-score_score<2>", (8, 8))
-        canvas.write(str(self.score).zfill(4)+"____"+str(self.highscore).zfill(4), (24, 24))
-        _ = [canvas.drawsprite(bm.shield, (30+45*i, 192)) for i in range(4)]
+        canvas.write("0000____"+str(self.highscore).zfill(4)+"______0000", (24, 24))
+
+    def footer(self, canvas):
         canvas.write("3", (6, 240))
         _ = [canvas.drawsprite(bm.tank,  (i, 240)) for i in [22, 38]]
         canvas.write("credit_"+str(self.credit).zfill(2), (134, 240))
         canvas.drawsprite(np.array([[1 for _ in range(224)]]), (0, 239))
-        canvas.update()
+
+    def shields(self, canvas):
+        ''' Draw the initial game board '''
+        _ = [canvas.drawsprite(bm.shield, (30+45*i, 192)) for i in range(4)]
+
+    def player(self, canvas, player):
+        canvas.drawsprite(player.sprite[player.active], player.refpos)
+
+    def rack(self, canvas):
+        pass
+
+    def saucer(self, canvas):
+        pass
+
+    def shots(self, canvas):
+        pass
+
 
 
 # im = Image.fromarray(canvas*250)
 # im.save("screen.gif")
 
+pygame.init()
 
 def main():
     ''' Main game loop '''
@@ -233,22 +219,23 @@ def main():
     canvas = CanvasClass(SIZE)
     game = SpaceInvaders()
 
+    game.header(canvas)
     game.welcomescreen(canvas)
-    game.score = 0
-    game.board(canvas)
+    
+    canvas.fill(0)
+    game.header(canvas)
+    game.shields(canvas)
+    game.footer(canvas)
 
     aliens = GameObject(objects["aliens"])
-    alshot = [GameObject(objects["rolling"]), GameObject(
-        objects["plunger"]), GameObject(objects["squigly"])]
+    alshot = GameObject(objects["alshot"])
     player = GameObject(objects["player"])
     plshot = GameObject(objects["plshot"])
     saucer = GameObject(objects["saucer"])
 
     tick = 0
-    #joe = 0
-    livealiens = 55
-    running = True
 
+    running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -277,9 +264,10 @@ def main():
         if player.active:
             player.move(7)
             player.direction = (0, 0)
-        canvas.drawsprite(player.sprite[player.active], player.refpos)
-
         
+
+
+        '''
         # Move player's shot and draw shot
         plshot.cooldown = np.maximum(plshot.cooldown-1, 0)
         if plshot.active > 1:
@@ -325,8 +313,8 @@ def main():
 
 
 
+
         
-        '''
         # Has player shot hit alien?
             for number, status in enumerate(aliens.active):
                 if status == 1:
@@ -375,7 +363,7 @@ def main():
 
         if alshot[shotnumber].active > 1:
             alshot[shotnumber].active = (alshot[shotnumber].active+1) % 4
-        '''
+        
         # Flying saucer
         saucer.cooldown = np.maximum(saucer.cooldown-1, 0)
         if saucer.active == 0:  # Saucer is inactive, check if it is time for saucer
@@ -418,10 +406,11 @@ def main():
  
  
 
-
+        '''
         tick += 1
         canvas.write(str(game.score).zfill(4)+"____"+str(game.highscore).zfill(4), (24, 24))
         clock.tick(60)
+        game.player(canvas, player)
         canvas.update()
 
 
