@@ -11,17 +11,6 @@ WHITE = (255, 255, 255, 255)
 GREEN = (32, 180, 10, 255)
 RED = (252, 72, 8, 255)
 
-objects = {
-           
-           'alshot': {'refpos': [0, 0],
-                       'active': 0,
-                       'direction': (0, 4),
-                       'cooldown': 48,
-                       'sprite': [bm.alshot,
-                                  bm.alien_shot_exploding]
-                       },
-           }
-
 
 def alienscore(row):
     ''' Determine the score for hitting an alien '''
@@ -138,7 +127,11 @@ class SpaceInvaders():
                                                  'sprite': bm.aliens[i//22],
                                                  'explode': bm.alien_exploding
                                                 }) for i in range(55)],
-                         "alshot" : GameObject(objects["alshot"]),
+                         "alshot" : [GameObject({'direction': (0,4),
+                                                 'cooldown': 48,
+                                                 'sprite': bm.alshot[i],
+                                                 'explode': bm.alien_shot_exploding
+                                                }) for i in range(3)],                                                
                          "player" : GameObject({'refpos': np.array([7, 216]), 
                                                 'sprite': [bm.tank]}),
                          "plshot" : GameObject({'direction': (0,-4), 
@@ -191,6 +184,8 @@ def main():
     game = SpaceInvaders()
     gameon = False
 
+    
+
     game.update(canvas, gameon)
 
     while not gameon:
@@ -206,6 +201,7 @@ def main():
                     game.update(canvas,gameon)
                     
     tick = 0
+    livealiens=list(range(55))
 
     game.shields(canvas)   
 
@@ -280,47 +276,56 @@ def main():
                     game.score += saucerscore(game.numberofshots)
                 
         
-        
-        
-        '''
-            
         # Here goes alien shots
         shotnumber = tick % 3
-        alshot[shotnumber].cooldown = np.maximum(alshot[shotnumber].cooldown-1, 0)
+        game.elements['alshot'][shotnumber].cooldown = np.maximum(game.elements['alshot'][shotnumber].cooldown-1, 0)
         if shotnumber == 0:
-            shotcolumn = canvas[48:192, player.refpos[0]+7]
+            shotcolumn = canvas[48:192, game.elements['player'].refpos[0]+7]
         elif shotnumber == 1:
             column = alienfirecolumn(tick % 15)-1
-            shotcolumn = canvas[48:192, (aliens.refpos[0]+16*column)+8]
+            shotcolumn = canvas[48:192, (game.elements['aliens'][0].refpos[0]+16*column)+8]
         else:
             column = alienfirecolumn((tick % 9)+6)
-            shotcolumn = canvas[48:192, (aliens.refpos[0]+16*column)+8]
+            shotcolumn = canvas[48:192, (game.elements['aliens'][0].refpos[0]+16*column)+8]
 
-        if min([item.movecounter for idx, item in enumerate(alshot) if idx != shotnumber]) >= alshot[shotnumber].cooldown \
-                and sum(shotcolumn) != 0 and alshot[shotnumber].active == 0:
-            alshot[shotnumber].active = 1
-            alshot[shotnumber].movecounter = 0
-            alshot[shotnumber].cooldown = alienreloadtime(0)
+        if min([item.movecounter for idx, item in enumerate(game.elements['alshot']) if idx != shotnumber]) >= game.elements['alshot'][shotnumber].cooldown \
+                and sum(shotcolumn) != 0 and game.elements['alshot'][shotnumber].active == 0:
+            game.elements['alshot'][shotnumber].active = 1
+            game.elements['alshot'][shotnumber].movecounter = 0
+            game.elements['alshot'][shotnumber].cooldown = alienreloadtime(0)
             for idx, ypos in enumerate(reversed(shotcolumn)):
                 if ypos == 1:
                     break
             if shotnumber == 0:
-                alshot[shotnumber].refpos = [player.refpos[0]+8, 192-idx]
+                game.elements['alshot'][shotnumber].refpos = [game.elements['player'].refpos[0]+8, 192-idx]
             else:
-                alshot[shotnumber].refpos = [(aliens.refpos[0]+16*column)+8, 192-idx]
+                game.elements['alshot'][shotnumber].refpos = [(game.elements['aliens'][0].refpos[0]+16*column)+8, 192-idx]
 
-        if alshot[shotnumber].active == 1:
-            alshot[shotnumber].move()
-            alshot[shotnumber].movecounter += 1
-            if alshot[shotnumber].edgedetect():
-                alshot[shotnumber].active = 2
+        if game.elements['alshot'][shotnumber].active == 1:
+            game.elements['alshot'][shotnumber].move()
+            game.elements['alshot'][shotnumber].movecounter += 1
+            if game.elements['alshot'][shotnumber].edgedetect():
+                game.elements['alshot'][shotnumber].active = 2
 
-        canvas.drawsprite(alshot[shotnumber].sprite[alshot[shotnumber].active]
-                          [tick % 4], alshot[shotnumber].refpos)
+        if game.elements['alshot'][shotnumber].active == 1:
+            if sum([sum(canvas.screen.get_at([game.elements['alshot'][shotnumber].refpos[0],game.elements['alshot'][shotnumber].refpos[1]+8+i])[:2]) for i in range(4)]) != 0:
+                # is it the player?
+                if  216 > game.elements['alshot'][shotnumber].refpos[1] > 208:
+                    print("player was hit")
+                else:
+                    target = canvas[game.elements['alshot'][shotnumber].refpos[1]:game.elements['alshot'][shotnumber].refpos[1]+8,
+                                 game.elements['alshot'][shotnumber].refpos[0]-4:game.elements['alshot'][shotnumber].refpos[0]+4]
+                    canvas.drawsprite(target-(np.logical_and(target,bm.shot_exploding).astype(int)), [game.elements['alshot'][shotnumber].refpos[0]-4,game.elements['alshot'][shotnumber].refpos[1]])
+                    
+                    game.elements['alshot'][shotnumber].active=0
+                    
 
-        if alshot[shotnumber].active > 1:
-            alshot[shotnumber].active = (alshot[shotnumber].active+1) % 4
-        '''
+
+        game.elements['alshot'][shotnumber].update(canvas, tick%4)
+
+        if game.elements['alshot'][shotnumber].active > 1:
+            game.elements['alshot'][shotnumber].active = (game.elements['alshot'][shotnumber].active+1) % 4
+
             
         # Flying saucer
         game.elements['saucer'].cooldown = np.maximum(game.elements['saucer'].cooldown-1, 0)
@@ -338,28 +343,28 @@ def main():
                 game.elements['saucer'].move()
                 game.elements['saucer'].update(canvas)
         else: # Saucer was hit. Keep the saucer explosion for a second and then erase
-            if tick-game.elements['saucer'].hittime == 30:
                 game.elements['saucer'].active = 0
                 game.elements['saucer'].update(canvas)
 
         
-        # The Aliens
-        number = tick % 55
-        game.elements['aliens'][0].edgeflag = np.logical_or(game.elements['aliens'][0].edgeflag, game.elements['aliens'][number].edgedetect())
+        # The Aliens        
+        number = tick % len(livealiens)
+        game.elements['aliens'][0].edgeflag = np.logical_or(game.elements['aliens'][0].edgeflag, game.elements['aliens'][livealiens[number]].edgedetect())
         if number == 0:  # Move the rack once every cycle through rack
+            tick = 0
+            livealiens = [idx for idx, alien in enumerate(game.elements['aliens']) if alien.active > 0]
             if game.elements['aliens'][0].edgeflag:  # Drop rack if edge has been detected
                 for i in range(55):
                     game.elements['aliens'][i].refpos += np.array([0, 8])
                     game.elements['aliens'][i].direction = (-1*game.elements['aliens'][i].direction[0], 0)
                     game.elements['aliens'][i].edgeflag = 0
-        if game.elements['aliens'][number].active:
-            game.elements['aliens'][number].move()
-            game.elements['aliens'][number].update(canvas, tick%2)
+                
+        game.elements['aliens'][livealiens[number]].move()
+        game.elements['aliens'][livealiens[number]].update(canvas, tick%2)
         
-        if game.elements['aliens'][number].active > 1:
-            if tick-game.elements['aliens'][number].hittime > 10:
-                game.elements['aliens'][number].active = 0
-                game.elements['aliens'][number].update(canvas)
+        if game.elements['aliens'][livealiens[number]].active > 1:
+                game.elements['aliens'][livealiens[number]].active = 0
+                game.elements['aliens'][livealiens[number]].update(canvas)
         
 
         tick += 1
