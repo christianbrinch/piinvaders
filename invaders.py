@@ -42,26 +42,27 @@ def alienfirecolumn(tick):
 def DrawAlien(alienptr, game, canvas):
     row, col = alienptr // 11, alienptr % 11
     if game.aliens.timer > 0:
+        canvas.drawsprite(bm.alien_exploding, game.aliens.refpos+game.aliens.hit)
         game.aliens.timer -= 1
         if game.aliens.timer == 0:
             canvas.drawsprite(0*bm.alien_exploding, game.aliens.refpos+game.aliens.hit)
-            game.player.shot.status = 4
+            game.player.shot.status = 0
             game.aliens.hit = None
     canvas.drawsprite(bm.aliens[alienptr//22][game.beat % 2], game.aliens.refpos+16*np.array([col, -row]))
 
     check=False
     while not check:
         alienptr = (alienptr+1)%55
+        if alienptr == 0:
+            if game.aliens.edgeflag:
+                game.aliens.refpos += np.array([0, 8])
+                game.aliens.direction = -1*game.aliens.direction
+                print("edgeflag clear")
+                game.aliens.edgeflag = False
+            else:
+                game.aliens.refpos += game.aliens.direction
         if game.aliens.rack[alienptr] == 1:
             check = True
-    if alienptr == 0:
-        if game.aliens.edgeflag:
-            game.aliens.refpos += np.array([0, 8])
-            game.aliens.direction = -1*game.aliens.direction
-            game.aliens.edgeflag = False
-        else:
-            game.aliens.refpos += game.aliens.direction
-
     return alienptr
 
 
@@ -105,10 +106,38 @@ def GameObj1(game, canvas):
         elif game.player.shot.status == 2:
             game.player.shot.pos += np.array([0,-4])
             canvas.drawsprite(game.player.shot.sprite, game.player.shot.pos)
+            if game.player.shot.pos[1] < 40:
+                # Escaped
+                game.player.shot.status = 3
+                game.player.shot.timer = 10
+                return
             if sum(canvas.screen.get_at(game.player.shot.pos-np.array([0,1]))[:2]):
-                print(game.player.shot.pos, sum(canvas.screen.get_at(game.player.shot.pos-np.array([0,8]))[:2]))
-                game.player.shot.collisionflag = 1
-        
+                if game.player.shot.pos[1] < 50:
+                    #game.saucer.hit = 1
+                    pass
+                else:
+                    # Aliens
+                    yr = game.aliens.refpos[1]+16
+                    row = (yr-game.player.shot.pos[1])//16 
+                    xr = game.aliens.refpos[0]
+                    col = (game.player.shot.pos[0]-xr)//16
+                    if 0 <= row < 6 and 0 <= col < 11:
+                        if game.aliens.rack[row*11+col] == 0:
+                            game.player.shot.status = 3
+                            game.player.shot.timer = 10
+                            return
+                        else:
+                            game.player.shot.status = 5
+                            game.aliens.rack[row*11+col] = 0
+                            game.player.score += alienscore(row)
+                            canvas.drawsprite(0 * bm.shot, [game.player.shot.pos[0],game.player.shot.pos[1]])
+                            canvas.drawsprite(bm.alien_exploding, game.aliens.refpos+16*np.array([col,-row]))
+                            game.aliens.timer = 16
+                            game.aliens.hit = 16*np.array([col,-row])
+                            return
+                    game.player.shot.status = 3
+                    game.player.shot.timer = 10
+                    return    
         elif game.player.shot.status == 3:
             if game.player.shot.timer == 10:                
                 # Erase shot
@@ -127,6 +156,7 @@ def GameObj1(game, canvas):
                                  game.player.shot.pos[0]-4:game.player.shot.pos[0]+4]                
                 canvas.drawsprite(target-np.logical_and(target,bm.shot_exploding.astype(int)), 
                                   [game.player.shot.pos[0]-4,game.player.shot.pos[1]-6])
+
 
 
             
@@ -169,24 +199,6 @@ def PlayerShotHit(game, canvas):
 
         
     
-    #    game.player.shot.status = 4
-    #    game.alienexplosion = 0
-    #yr = game.aliens.refpos[1]
-    #row = (yr-game.player.shot.pos[1])//16
-    #xr = game.aliens.refpos[0]
-    #col = (xr-game.player.shot.pos[0])//16
-    #game.player.shot.status = 5
-    #print(yr, row, xr, col)
-    #if game.aliens.rack[row*11+col] == 0:
-    #    game.player.shot.status = 3
-    #    return
-    #else:
-    #    game.aliens.rack[row*11+col] = 0
-    #    game.player.score += alienscore(row)
-    #    canvas.drawsprite(bm.alien_exploding, game.aliens.refpos+np.array([row,col]))
-    #    game.alien.timer = 16
-    #    game.alien.hit = np.array([row*16,col*16])
-    #    return
 
         
 def RackBump(game, canvas):
@@ -195,11 +207,12 @@ def RackBump(game, canvas):
     else:
         edge = 2
     if sum([canvas.screen.get_at([edge,int(i)])[0] for i in np.linspace(41,238,198)]):
+        print("edgeflag set")
         game.aliens.edgeflag = True
             
 
 def PlyrShotAndBump(game, canvas):
-    PlayerShotHit(game, canvas)
+    #PlayerShotHit(game, canvas)
     RackBump(game, canvas)
     
 def CountAliens(game):
