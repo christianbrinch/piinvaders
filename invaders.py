@@ -49,6 +49,13 @@ def DrawAlien(alienptr, game, canvas):
             game.player.shot.status = 0
             game.aliens.hit = None
     canvas.drawsprite(bm.aliens[alienptr//22][game.beat % 2], game.aliens.refpos+16*np.array([col, -row]))
+    if game.aliens.direction[0] > 0:
+        edge = 221
+    else:
+        edge = 2
+    if sum([canvas.screen.get_at([edge,int(i)])[0] for i in np.linspace(41,238,198)]):
+        print("edgeflag set")
+        game.aliens.edgeflag = True
 
     check=False
     while not check:
@@ -111,7 +118,7 @@ def GameObj1(game, canvas):
                 game.player.shot.status = 3
                 game.player.shot.timer = 10
                 return
-            if sum(canvas.screen.get_at(game.player.shot.pos-np.array([0,1]))[:2]):
+            if sum([sum(canvas.screen.get_at(game.player.shot.pos-np.array([0,i]))[:2]) for i in [1,2]]):
                 if game.player.shot.pos[1] < 50:
                     #game.saucer.hit = 1
                     pass
@@ -158,6 +165,8 @@ def GameObj1(game, canvas):
                                   [game.player.shot.pos[0]-4,game.player.shot.pos[1]-6])
 
 
+def GameObj2(game, canvas):
+    pass
 
             
 
@@ -182,39 +191,14 @@ def PlrFire(key, game):
         game.player.shot.cooldown += -1
     
 
-def PlayerShotHit(game, canvas):
-    if game.player.shot.status == 5:
-       return
-    elif game.player.shot.status == 2:
-        if game.player.shot.pos[1] == 40:
-            game.player.shot.status = 3
-            game.player.shot.timer = 10
-        elif game.player.shot.pos[1] == 50-8 and game.player.shot.collisionflag:
-            pass
-            #game.saucer.hit = 1
-        elif game.player.shot.collisionflag:
-            game.player.shot.status = 3
-            game.player.shot.timer = 10
-
 
         
     
 
         
-def RackBump(game, canvas):
-    if game.aliens.direction[0] > 0:
-        edge = 221
-    else:
-        edge = 2
-    if sum([canvas.screen.get_at([edge,int(i)])[0] for i in np.linspace(41,238,198)]):
-        print("edgeflag set")
-        game.aliens.edgeflag = True
-            
+           
 
-def PlyrShotAndBump(game, canvas):
-    #PlayerShotHit(game, canvas)
-    RackBump(game, canvas)
-    
+   
 def CountAliens(game):
     game.aliens.remaining = sum(game.aliens.rack)
 
@@ -400,7 +384,7 @@ def main():
         alienptr = DrawAlien(alienptr, game, canvas)
         #RunGameObjs()
         GameObj0(key,game, canvas, clock) # Move player
-        GameObj1(game, canvas)
+        GameObj1(game, canvas) # Move player shot
 
 
         #TimeToSaucer()
@@ -408,7 +392,6 @@ def main():
         # Game loop
         PlrFire(key, game)
         
-        PlyrShotAndBump(game, canvas)
         
         CountAliens(game)
         if game.aliens.remaining == 0:
