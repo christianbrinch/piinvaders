@@ -165,8 +165,20 @@ def GameObj1(game, canvas):
                                   [game.player.shot.pos[0]-4,game.player.shot.pos[1]-6])
 
 
-def GameObj2(game, canvas):
-    pass
+def GameObj2(game, canvas, beat):
+    if beat % 3 == 0:
+
+        if game.aliens.shots[0].active:
+            #move shot
+            return
+        else:
+            if not any([game.aliens.shot[i].active for i in [1,2]]):
+                # Time to fire?            
+                
+        
+
+        shotcolumn = canvas[48:192, game.player.refpos[0]+7]
+        
 
             
 
