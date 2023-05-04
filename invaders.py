@@ -53,8 +53,7 @@ def DrawAlien(alienptr, game, canvas):
         edge = 221
     else:
         edge = 2
-    if sum([canvas.screen.get_at([edge,int(i)])[0] for i in np.linspace(41,238,198)]):
-        print("edgeflag set")
+    if sum([canvas.screen.get_at([edge,int(i)])[0] for i in np.linspace(49,238,190)]):
         game.aliens.edgeflag = True
 
     check=False
@@ -64,7 +63,6 @@ def DrawAlien(alienptr, game, canvas):
             if game.aliens.edgeflag:
                 game.aliens.refpos += np.array([0, 8])
                 game.aliens.direction = -1*game.aliens.direction
-                print("edgeflag clear")
                 game.aliens.edgeflag = False
             else:
                 game.aliens.refpos += game.aliens.direction
@@ -120,8 +118,12 @@ def GameObj1(game, canvas):
                 return
             if sum([sum(canvas.screen.get_at(game.player.shot.pos-np.array([0,i]))[:2]) for i in [1,2]]):
                 if game.player.shot.pos[1] < 50:
-                    #game.saucer.hit = 1
-                    pass
+                    # Saucer
+                    game.saucer.explode = 10
+                    game.saucer.status = 2
+                    canvas.drawsprite(0 * bm.shot, game.player.shot.pos)
+                    game.player.shot.status = 0
+                    game.player.score += saucerscore(game.player.numberofshots)
                 else:
                     # Aliens
                     yr = game.aliens.refpos[1]+16
@@ -144,6 +146,9 @@ def GameObj1(game, canvas):
                             return
                     game.player.shot.status = 3
                     game.player.shot.timer = 10
+                    for i in range(3):
+                        game.aliens.shots[i].status = 0
+                        canvas.drawsprite(0*bm.alien_shot_exploding, game.aliens.shots[i].pos)
                     return    
         elif game.player.shot.status == 3:
             if game.player.shot.timer == 10:                
@@ -166,26 +171,88 @@ def GameObj1(game, canvas):
 
 
 def GameObj2(game, canvas, beat):
-    if beat % 3 == 0:
+    j = beat % 3
+    if j == 2 and game.saucer.status:
+        return
 
-        if game.aliens.shots[0].active:
-            #move shot
+    if game.aliens.shots[j].status == 1:
+        game.aliens.shots[j].pos += np.array([0,game.aliens.shotspeed])
+        game.aliens.shots[j].movecounter += 1
+        canvas.drawsprite(game.aliens.shots[j].sprite[beat % 4], game.aliens.shots[j].pos)
+        if sum([sum(canvas.screen.get_at(game.aliens.shots[j].pos+np.array([0,8+i]))[:2]) for i in range(4)]):
+            if 225 > game.aliens.shots[j].pos[1] >= 208 and game.player.status:
+                game.player.exploding = 1
+            # collision detected
+            game.aliens.shots[j].status = 2
+            game.aliens.shots[j].timer = 10
+        if game.aliens.shots[j].pos[1] >= 233:
+            # Shot left play field
+            game.aliens.shots[j].status = 2
+            game.aliens.shots[j].timer = 10
+
+    elif game.aliens.shots[j].status == 2:
+        # blow up shot
+        canvas.drawsprite(bm.alien_shot_exploding, game.aliens.shots[j].pos)
+        game.aliens.shots[j].timer -= 1
+        if game.aliens.shots[j].timer == 0:
+            game.aliens.shots[j].status = 0
+            canvas.drawsprite(0*bm.alien_shot_exploding, game.aliens.shots[j].pos)
+
+    else:
+        game.aliens.shots[j].movecounter = 0
+        if not any([game.aliens.shots[i].status for i in [0, 1, 2] if i != j]) and game.player.status:
+            # Time to fire?         
+            x = alienreloadtime(game.player.score) 
+                
+            if j==0:
+                shotcolumn = canvas[48:192, game.player.refpos[0]+7]
+            elif j==1:
+                column = alienfirecolumn(beat % 15)-1
+                shotcolumn = canvas[48:192, (game.aliens.refpos[0]+16*column)+8]
+            else:
+                column = alienfirecolumn((beat % 9)+6)
+                shotcolumn = canvas[48:192, (game.aliens.refpos[0]+16*column)+8]  
+            if sum(shotcolumn) != 0:
+                for idx, ypos in enumerate(reversed(shotcolumn)):
+                    if ypos == 1:
+                        break
+                if j==0:        
+                    game.aliens.shots[j].pos = np.array([game.player.refpos[0]+7, 192-idx])
+                else:
+                    game.aliens.shots[j].pos = np.array([(game.aliens.refpos[0]+16*column)+8, 192-idx])
+                game.aliens.shots[j].status = 1
+                    
+def Saucer(game, canvas):
+    if not game.saucer.status:
+        game.saucer.status = 1
+        game.saucer.direction = np.array([2*(game.player.numberofshots % 2) - 1, 0])
+        game.saucer.pos = np.array([game.saucer.direction[0] % (width-24), 40])
+    elif game.saucer.status == 1:
+        if game.saucer.direction[0] > 0:
+            edge = 218
+        else:
+            edge = 5
+        if canvas.screen.get_at([edge,45])[0]:
+            canvas.drawsprite(0*game.saucer.sprite, game.saucer.pos)
+            game.saucer.status = 0
+            game.saucer.timer = 600
             return
         else:
-            if not any([game.aliens.shot[i].active for i in [1,2]]):
-                # Time to fire?            
-                
-        
+            game.saucer.pos += game.saucer.direction
+            canvas.drawsprite(game.saucer.sprite, game.saucer.pos)
+    elif game.saucer.status == 2:
+        canvas.drawsprite(bm.saucer_exploding, game.saucer.pos)
+        game.saucer.explode -= 1
+        if game.saucer.explode == 0:
+            game.saucer.status = 0
+            game.saucer.timer = 600
+            canvas.drawsprite(0*game.saucer.sprite, game.saucer.pos)
 
-        shotcolumn = canvas[48:192, game.player.refpos[0]+7]
+
+
         
 
             
-
-
-
-
-
 
 def PlrFire(key, game):
     if key[pygame.K_SPACE]:
@@ -193,6 +260,7 @@ def PlrFire(key, game):
         if not game.player.status:
             game.player.status = True            
             game.player.shot.cooldown = 5
+            game.aliens.enableFire = 1
         elif game.player.shot.cooldown == 0: 
             # is a shot already on screen?
             if game.player.shot.status == 0:
@@ -248,13 +316,13 @@ class CanvasClass(np.ndarray):
 
 class shotInfo():
     ''' A class to keep shot info '''
-    def __init__(self):
+    def __init__(self, sprite):
         self.status = 0
         self.pos = np.array([0,0])
         self.collisionflag=0
         self.cooldown = 0
         self.timer = 0
-        self.sprite=bm.shot
+        self.sprite=sprite
 
 
 
@@ -264,7 +332,7 @@ class playerInfo():
         self.score = 0
         self.status = 0
         self.refpos = np.array([16,216])
-        self.shot = shotInfo()
+        self.shot = shotInfo(bm.shot)
         self.exploding = 0
         self.numberofshots = 0
         self.sprite = bm.tank
@@ -283,6 +351,19 @@ class alienInfo():
         self.timer = 0
         self.direction = np.array([2,0])
         self.edgeflag = False
+        self.enableFire = 1
+        self.shotspeed = 4
+        self.shots = [shotInfo(bm.rolling),shotInfo(bm.plunger),shotInfo(bm.squigly)]
+    
+class saucerInfo():
+    def __init__(self):
+        self.status = 0
+        self.pos = None
+        self.direction = None
+        self.timer = 600
+        self.direction = 1
+        self.explode = 0
+        self.sprite = bm.saucer
         
 
 
@@ -296,6 +377,7 @@ class SpaceInvaders():
         self.beat = 0
         self.player = playerInfo()
         self.aliens = alienInfo()
+        self.saucer = saucerInfo()
 
         
     def bumpcredits(self, canvas):
@@ -397,9 +479,9 @@ def main():
         #RunGameObjs()
         GameObj0(key,game, canvas, clock) # Move player
         GameObj1(game, canvas) # Move player shot
-
-
-        #TimeToSaucer()
+        GameObj2(game, canvas, game.beat) # Alien rolling shot
+        if game.saucer.timer <= 0:
+            Saucer(game, canvas)
 
         # Game loop
         PlrFire(key, game)
@@ -408,16 +490,17 @@ def main():
         CountAliens(game)
         if game.aliens.remaining == 0:
             gamemode = False
-        '''
+
         AShotReloadRate = alienreloadtime(game.player.score)
         # Check for extra ship award
         if game.aliens.remaining < 9:
-            game.aliens.shotspeed = -5
-        # Check if player is hit
-        '''
+            game.aliens.shotspeed = 5
+        
+        
         
         clock.tick(60)          
         game.beat += 1  
+        game.saucer.timer -= 1
         game.update(canvas)
         
         
