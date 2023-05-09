@@ -55,6 +55,7 @@ def DrawAlien(alienptr, game, canvas):
             game.aliens.hit = None
     canvas.drawsprite(bm.aliens[alienptr//22][game.beat %
                       2], game.aliens.refpos+16*np.array([col, -row]))
+
     if game.aliens.direction[0] > 0:
         edge = 221
     else:
@@ -66,6 +67,7 @@ def DrawAlien(alienptr, game, canvas):
     while not check:
         alienptr = (alienptr+1) % 55
         if alienptr == 0:
+            pygame.mixer.Sound.play(ALIEN_SOUND[game.beat % 4])
             if game.aliens.edgeflag:
                 game.aliens.refpos += np.array([0, 8])
                 game.aliens.direction = -1*game.aliens.direction
@@ -141,6 +143,7 @@ def GameObj1(game, canvas):
                             game.player.shot.status = 5
                             game.aliens.rack[row*11+col] = 0
                             game.player.score += alienscore(row)
+                            pygame.mixer.Sound.play(HIT_SOUND)
                             canvas.drawsprite(
                                 0 * bm.shot, [game.player.shot.pos[0], game.player.shot.pos[1]])
                             canvas.drawsprite(
@@ -190,6 +193,8 @@ def GameObj2(game, canvas, beat):
         if sum([sum(canvas.screen.get_at(game.aliens.shots[j].pos+np.array([0, 8+i]))[:2]) for i in range(4)]):
             if 225 > game.aliens.shots[j].pos[1] >= 208 and game.player.status:
                 game.player.exploding = 1
+                pygame.mixer.Sound.play(EXPLODE_SOUND)
+
             # collision detected
             game.aliens.shots[j].status = 2
             game.aliens.shots[j].timer = 10
@@ -275,8 +280,9 @@ def PlrFire(key, game):
             # is a shot already on screen?
             if game.player.shot.status == 0:
                 game.player.shot.status = 1
-            else:
                 game.player.numberofshots += 1
+                pygame.mixer.Sound.play(SHOT_SOUND)
+
     if game.player.shot.cooldown > 0:
         game.player.shot.cooldown += -1
 
@@ -419,10 +425,18 @@ class SpaceInvaders():
 # im = Image.fromarray(canvas*250)
 # im.save("screen.gif")
 pygame.init()
+SHOT_SOUND = pygame.mixer.Sound("sound/shoot.wav")
+HIT_SOUND = pygame.mixer.Sound("sound/invaderkilled.wav")
+EXPLODE_SOUND = pygame.mixer.Sound("sound/explosion.wav")
+ALIEN_SOUND = [pygame.mixer.Sound("sound/fastinvader1.wav"),
+               pygame.mixer.Sound("sound/fastinvader2.wav"),
+               pygame.mixer.Sound("sound/fastinvader3.wav"),
+               pygame.mixer.Sound("sound/fastinvader4.wav")]
 
 
 def main():
     ''' Main game loop '''
+
     clock = pygame.time.Clock()
     canvas = CanvasClass(SIZE)
     game = SpaceInvaders()
