@@ -3,10 +3,11 @@ import numpy as np
 
 
 def bitlist(x):
-    return [int(i) for i in '{:08b}'.format(x)]
+    return np.array([int(i) for i in '{:08b}'.format(x)])
 
 
 pygame.init()
+clock = pygame.time.Clock()
 
 SIZE = height, width = 224, 256
 screen = pygame.display.set_mode(SIZE)
@@ -16,27 +17,68 @@ pygame.display.update()
 player = [0x00, 0x00, 0x0F, 0x1F, 0x1F, 0x1F, 0x1F,
           0x7F, 0xFF, 0x7F, 0x1F, 0x1F, 0x1F, 0x1F, 0x0F, 0x00]
 
+char = {'c':[0x00, 0x3E, 0x41, 0x41, 0x41, 0x22, 0x00, 0x00],
+        'e':[0x00, 0x7F, 0x49, 0x49, 0x49, 0x41, 0x00, 0x00],
+        'h':[0x00, 0x7F, 0x08, 0x08, 0x08, 0x7F, 0x00, 0x00],
+        'i':[0x00, 0x00, 0x41, 0x7F, 0x41, 0x00, 0x00, 0x00],
+        'm':[0x00, 0x7F, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00],
+        'o':[0x00, 0x3E, 0x41, 0x41, 0x41, 0x3E, 0x00, 0x00],
+        'r':[0x00, 0x7F, 0x48, 0x4C, 0x4A, 0x31, 0x00, 0x00],
+        's':[0x00, 0x32, 0x49, 0x49, 0x49, 0x26, 0x00, 0x00],
+        '-':[0x00, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00, 0x00],
+        '<':[0x00, 0x08, 0x14, 0x22, 0x41, 0x00, 0x00, 0x00],
+        '>':[0x00, 0x00, 0x41, 0x22, 0x14, 0x08, 0x00, 0x00],
+        '1':[0x00, 0x00, 0x21, 0x7F, 0x01, 0x00, 0x00, 0x00],
+        '2':[0x00, 0x23, 0x45, 0x49, 0x49, 0x31, 0x00, 0x00],
+        ' ':[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        }
+
+pos = [8]
+
 videomem = [0x00]*32*224
 
+message = " SCORE<1> HI-SCORE SCORE<2>".lower()
 
 game_over = False
 while not game_over:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             game_over = True
+    key = pygame.key.get_pressed()
+    if key[pygame.K_LEFT]:
+        pos[0] = np.maximum(2,pos[0]-1)
+    elif key[pygame.K_RIGHT]:
+        pos[0] = np.minimum(202-16, pos[0]+1)
+        
+    #for idx, n in enumerate(player):
+    #        videomem[(31-pos[0])+(idx+pos[1])*32] = n
 
-        # vmem = np.array([[videomem[a + b*224] for a in range(224)]
-        #                for b in range(256)])
 
-        vmem = 255*np.array([sum([bitlist(videomem[a+b*32])
-                                  for a in range(32)], []) for b in range(224)])
+    #for idx, n in enumerate(char['c']):
+    #        videomem[(31-1)+(idx+136)*32] = n
 
-        surface = pygame.surfarray.make_surface(vmem)
-        screen.blit(surface, (0, 0))
-        pygame.display.update()
-        input()
-        for idx, n in enumerate(player):
-            videomem[2+idx*32] = n
+    for pos,c in enumerate(message):
+        for idx, n in enumerate(char[c]):
+                videomem[0x1E+0x08*pos+(idx+0)*32] = n
+
+
+
+
+    #vmem = 255*np.array([sum([bitlist(videomem[a+b*224])
+    #                              for a in range(224)], []) for b in range(32)])
+    vmem = 255*np.concatenate([np.array([bitlist(videomem[a+b*224])
+                                  for a in range(1)]).T for b in range(32)])
+    print(vmem)
+    input()
+    
+
+
+    surface = pygame.surfarray.make_surface(vmem)
+    screen.blit(surface, (0, 0))
+    clock.tick(60)
+    pygame.display.update()
+    input()
+    
 
 pygame.quit()
 quit()
