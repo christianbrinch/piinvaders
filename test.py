@@ -14,6 +14,8 @@ def xy(addr):
 def bitlist(x):
     return [int(i) for i in '{:08b}'.format(x)]
 
+demoCommands = [0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 
+               0x02, 0x01, 0x00, 0x02, 0x01, 0x00]
 
 alienA0 = [0x00, 0x00, 0x39, 0x79, 0x7A, 0x6E, 0xEC, 0xFA,
            0xFA, 0xEC, 0x6E, 0x7A, 0x79, 0x39, 0x00, 0x00]
@@ -29,8 +31,23 @@ alienB1 = [0x00, 0x00, 0x00, 0x0E, 0x18, 0xBE, 0x6D, 0x3D,
 alienC1 = [0x00, 0x00, 0x00, 0x00, 0x1A, 0x3D, 0x68, 0xFC,
            0xFC, 0x68, 0x3D, 0x1A, 0x00, 0x00, 0x00, 0x00]
 
+alienExplode = [0x00, 0x08, 0x49, 0x22, 0x14, 0x81, 0x42, 0x00, 
+                0x42, 0x81, 0x14, 0x22, 0x49, 0x08, 0x00, 0x00]
+
+aShotExplod = [0x4A, 0x15, 0xBE, 0x3F, 0x5E, 0x25]
+
+
 player = [0x00, 0x00, 0x0F, 0x1F, 0x1F, 0x1F, 0x1F, 0x7F,
           0xFF, 0x7F, 0x1F, 0x1F, 0x1F, 0x1F, 0x0F, 0x00]
+
+playerBlow0 = [0x00, 0x04, 0x01, 0x13, 0x03, 0x07, 0xB3, 0x0F, 
+               0x2F, 0x03, 0x2F, 0x49, 0x04, 0x03, 0x00, 0x01]
+playerBlow1 = [0x40, 0x08, 0x05, 0xA3, 0x0A, 0x03, 0x5B, 0x0F,
+               0x27, 0x27, 0x0B, 0x4B, 0x40, 0x84, 0x11, 0x48]
+
+playerShot = [0x0F]
+
+shotExploding = [0x99, 0x3C, 0x7E, 0x3D, 0xBC, 0x3E, 0x7C, 0x99]
 
 shield = [0xFF, 0x0F, 0xFF, 0x1F, 0xFF, 0x3F, 0xFF, 0x7F, 0xFF, 0xFF, 0xFC,
           0xFF, 0xF8, 0xFF, 0xF0, 0xFF, 0xF0, 0xFF, 0xF0, 0xFF, 0xF0, 0xFF,
@@ -88,11 +105,10 @@ class GameInfo():
         self.gameMode = 0
         self.hiscore = 0
         self.score = [0, 0]
-        self.lives = [3, 3]
         self.coindeposit = 0
         self.credit = 0
-        self.waitforstartloop = 0
         self.splashAnimate = 1
+        self.ISRsplashtask = 0
         self.p1ShipsRem = 0
         self.p1startbut = 0
         self.p2ShipsRem = 0
@@ -103,6 +119,17 @@ class PlayerInfo():
     def __init__(self):
         self.aliens = [1] * 55
         self.shields = shield*4
+
+class splashanimateRAM():
+    def __init__(self,i,dx,dy,x,y,sprite,target,reached):
+        self.form=i
+        self.dx=dx
+        self.dy=dy
+        self.x=x
+        self.y=y
+        self.sprite=sprite
+        self.target=target
+        self.reached=reached
 
 
 class ROMmirror():
@@ -286,6 +313,9 @@ class VideoMem(list):
             if ((y+idx) <= 223):
                 self[(0x1F - x) + ((y + idx) * 0x20)] = n
 
+    def getmemory(self, y, x):
+        return self[(0x1F - x)+ y*0x20]
+
     def clearsprite(self, n_bytes, y, x):
         ''' Clear n bytes at x, y'''
         for idx in range(n_bytes):
@@ -305,34 +335,26 @@ class VideoMem(list):
 
 
 def init():
-    # Clear screen
+    
     videomem.clear()
-
-    # Print score head
     videomem.printmsg(" SCORE<1> HI-SCORE SCORE<2>", *xy(0x241E))
-
-    # Print score
     videomem.printmsg(str(gameinfo.score[0]).zfill(4), *xy(0x271C))
     videomem.printmsg(str(gameinfo.score[1]).zfill(4), *xy(0x391C))
-
-    # Print hi-score
     videomem.printmsg(str(gameinfo.hiscore).zfill(4), *xy(0x2F1C))
-
-    # Print credit label
     videomem.printmsg("CREDIT ", *xy(0x3501))
-
-    # Print number of credits
     videomem.printmsg(str(gameinfo.credit).zfill(2), *xy(0x3C01))
+    if interrupt_event.is_set():
+        return
 
     # Why is this initialied here?
     aShotReloadRate = 8
 
     # Splash screens
-
     # TODO: turn off sound here
-
-    # Wait for one second (1000 milliseconds)
     pygame.time.delay(1000)
+    if interrupt_event.is_set():
+        return
+
 
     if gameinfo.splashAnimate % 2 == 0:
         # Print play with upside down y
@@ -342,7 +364,8 @@ def init():
         videomem.printmsg("PLAY", *xy(0x3017), delay=True)
 
     videomem.printmsg("SPACE INVADERS", *xy(0x2B14), delay=True)
-
+    if interrupt_event.is_set():
+        return    
     pygame.time.delay(1000)
     videomem.printmsg("*SCORE ADVANCE TABLE*", *xy(0x2810))
     # Saucer is a 24 byte sprite. Don't know why. Should only
@@ -352,39 +375,45 @@ def init():
     videomem.plotsprite(alienB1, *xy(0x2C0A))
     videomem.plotsprite(alienA0, *xy(0x2C08))
     videomem.printmsg("=? MYSTERY", *xy(0x2E0E), delay=True)
+    if interrupt_event.is_set():
+        return    
     videomem.printmsg("=30 POINTS", *xy(0x2E0C), delay=True)
+    if interrupt_event.is_set():
+        return    
     videomem.printmsg("=20 POINTS", *xy(0x2E0A), delay=True)
+    if interrupt_event.is_set():
+        return    
     videomem.printmsg("=10 POINTS", *xy(0x2E08), delay=True)
-
+    if interrupt_event.is_set():
+        return    
     pygame.time.delay(2000)
 
+    # Alien stealing upside-down y animation
     if gameinfo.splashAnimate % 2 == 0:
-        i = 0
-        # In screen coordinates, y should be subtracted 0x24 and x
-        # should be divided by 8
-        y = 0xD9 - 0x24
-        x = 0xB8 // 8
-        sprite = [alienC0, alienC1]
-        while y >= (0x9E - 0x24):
-            y -= 0x01
-            videomem.plotsprite(sprite[(i//4) % 2], y, x)
-            i += 1
-        sprite = [AlienSprCYA, AlienSprCYB]
-        y = 0x98 - 0x24
-        while y <= (0xFF - 0x24):
-            y += 0x01
-            videomem.plotsprite(sprite[(i//4) % 2], y, x)
-            i += 1
+        splash.__init__(0,0,-1,0xB8//8,0xD9-0x24,[alienC0, alienC1],0x9E-0x24,0)
+        gameinfo.ISRsplashtask = 2
+        while splash.reached == 0:
+            if interrupt_event.is_set():
+                return
+        splash.__init__(0,0,1,0xB8//8,0x98-0x24,[AlienSprCYA, AlienSprCYB],0xFF-0x24,0)
+        while splash.reached == 0:
+            if interrupt_event.is_set():
+                return
         pygame.time.delay(1000)
-        sprite = [AlienSprCA, AlienSprCB]
-        y = 0xFF - 0x24
-        while y >= (0x97 - 0x24):
-            y -= 0x01
-            videomem.plotsprite(sprite[(i//4) % 2], y, x)
-            i += 1
+        splash.__init__(0,0,-1,0xB8//8,0xFF-0x24,[AlienSprCA, AlienSprCB],0x97-0x24,0)
+        while splash.reached == 0:
+            if interrupt_event.is_set():
+                return
+        gameinfo.ISRsplashtask = 0
         pygame.time.delay(1000)
+        if interrupt_event.is_set():
+            return
         videomem.clearsprite(10, *xy(0x33B7))
         pygame.time.delay(2000)
+        if interrupt_event.is_set():
+            return
+
+
 
     # Play demo
     videomem.clearplayfield()
@@ -396,33 +425,159 @@ def init():
         for i in range(gameinfo.p1ShipsRem):
             videomem.plotsprite(player, *xy(0x2701+i*0x200))
     # Initialize RAM
-    RAM = ROMmirror()
-    player1 = PlayerInfo()
+    ram.__init__()
+    playerinfo[0].__init__()
     # Draw player1 shields
     for i in range(4):
-        for idx, n in enumerate(player1.shields[0+44*i:44+44*i]):
+        for idx, n in enumerate(playerinfo[0].shields[0+44*i:44+44*i]):
             videomem[(0x1F - 0x07-(idx % 2)) +
                      (((0x20+i*45) + idx//2) * 0x20)] = n
-    #
-    # TODO: Here should ISR splash task be set i 1: demo
-
+    gameinfo.ISRsplashtask=1
     # Draw bottom line
     videomem.plotsprite([0x01]*224, *xy(0x2402))
-
+    n=0
+    while ram.playerAlive:
+        plrFireOrDemo(n)
+        n += 1
+        # playerShotHit() detection
+        rackBump()
+        if interrupt_event.is_set():
+            return
+        # Check for players been hit
+        # If no - continue, if yes - wait for demo player to stop exploding
+        # and return to splash
+    # init()
 
 def waitforstart():
     videomem.clearplayfield()
     videomem.printmsg("PRESS", *xy(0x3013))
-    # or (gameinfo.p2startbut == 0 and gameinfo.credit < 2):
-    while gameinfo.p1startbut == 0:
-        if gameinfo.credit == 1:
-            videomem.printmsg("ONLY 1PLAYER BUTTON ", *xy(0x2810))
-        else:
-            videomem.printmsg("1 OR 2PLAYERS BUTTON", *xy(0x2810))
+    if gameinfo.credit == 1:
+        videomem.printmsg("ONLY 1PLAYER BUTTON ", *xy(0x2810))
+    else:
+        videomem.printmsg("1 OR 2PLAYERS BUTTON", *xy(0x2810))
 
+def drawalien():
+    # Choose player 1 or player 2 code goes here
+    if ram.alienIsExploding:
+        ram.expAlienTimer -= 1
+        if ram.expAlienTimer > 0:
+            return
+        videomem.clearsprite(10, ram.expAlienYr)
+        ram.plyrShotStatus = 4
+        ram.alienIsExploding = 0
+        # TODO: Turn off alien is exploding sound here
+    else:   
+        if playerinfo[0].aliens[ram.alienCurIndex]:
+            if ram.alienCurIndex // 11 < 2:
+                sprite = [alienA0, alienA1]
+            elif 2 <= ram.alienCurIndex // 11 < 4:
+                sprite = [alienB0, alienB1]
+            else:
+                sprite = [alienB0, alienB1]
+            videomem.plotsprite(sprite[ram.alienFrame], ram.alienPosMSB - 0x24, ram.alienPosLSB // 8)
+            videomem.plotsprite([0x00]*16, ram.alienPosMSB - 0x24, (ram.alienPosLSB // 8)+1)
+    return
+
+def cursorNextAlien():
+    if ram.playerOK:
+        # switch here between player 1 and 2
+        ram.alienCurIndex += 1
+        if ram.alienCurIndex == 55:
+            moveRefAlien()
+        if not playerinfo[0].aliens[ram.alienCurIndex]:
+            cursorNextAlien()
+        getAlienCoords()
+        # Here goes code that handles "Invaded" situation
+
+def getAlienCoords():
+    ram.alienPosMSB = ram.refAlienXr + (ram.alienCurIndex % 11) * 16 
+    ram.alienPosLSB = ram.refAlienYr + (ram.alienCurIndex // 11) * 16
+
+
+def moveRefAlien():
+    # TODO: Here goes code that handles "No aliens left"
+    ram.alienCurIndex = 0
+    ram.refAlienYr += ram.refAlienDYr
+    ram.refAlienXr += ram.refAlienDXr
+    ram.alienFrame = (ram.alienFrame + 1) % 2
+    ram.refAlienDYr = 0
+
+def plrFireOrDemo(n):
+    if ram.playerAlive:
+        # get player task timer here
+        # return if timer not zero
+        if ram.plyrShotStatus > 0:
+            return
+        if gameinfo.gameMode:
+            pass
+        else:
+            # Demo mode
+            ram.plyrShotStatus = 1
+            ram.nextDemoCmd = demoCommands[n % 12]
+            #print(ram.nextDemoCmd)
+            #time.sleep(1)
+
+def rackBump():
+    if not ram.rackDirection:
+        # moving right
+        tot = sum([videomem.getmemory(*xy(0x3EA4+n)) for n in range(23)])
+        if tot > 0:
+            ram.refAlienDXr = -2
+            ram.refAlienDYr = -8
+            ram.rackDirection = 1
+    else:
+        # moving left
+        tot = sum([videomem.getmemory(*xy(0x2524+n)) for n in range(23)])
+        if tot > 0:
+            ram.refAlienDXr = 2
+            ram.refAlienDYr = -8
+            ram.rackDirection = 0
+ 
+
+def rungameobjs(): 
+    gameObj0()
+    gameObj1()
+
+def gameObj0():
+    if ram.playerOK:
+        ram.enableAlienFire = 1
+        if gameinfo.gameMode:
+            # use switch to control player
+            pass
+        else:
+            if ram.nextDemoCmd:
+                ram.playerXr += 1
+            else:
+                ram.playerXr -= 1
+            videomem.plotsprite(player, ram.playerXr-0x24, ram.playerYr // 8 )
+    else:
+        # Handle player blowing up
+        pass
+
+def gameObj1():
+    if ram.plyrShotStatus == 0:
+        return
+    if ram.plyrShotStatus == 1:
+        ram.plyrShotStatus = 2
+        ram.obj1CoorYr = ram.playerXr+8
+        videomem.plotsprite(playerShot, ram.obj1CoorXr-0x24, ram.obj1CoorYr // 8)
+        return
+    if ram.plyrShotStatus == 2:
+        videomem.clearsprite(1, ram.obj1CoorXr-0x24, ram.obj1CoorYr // 8)
+        ram.obj1CoorYr += ram.shotDeltaX
+        # Modify method to test for collision
+        videomem.plotsprite(playerShot, ram.obj1CoorXr-0x24, ram.obj1CoorYr // 8)
+        # if collision, set ram.alienIsExploding
+        return
+    if ram.plyrShotStatus == 3:
+        pass
 
 gameinfo = GameInfo()
+ram = ROMmirror()
+playerinfo = [PlayerInfo(), PlayerInfo()]
+splash = splashanimateRAM(0,0,0,0,0,0,0,0)
 videomem = VideoMem([0x00 for _ in range(SIZE[1]//8*SIZE[0])])
+interrupt_event = threading.Event()
 
 
 def main():
@@ -445,6 +600,9 @@ def main():
                     gameinfo.coindeposit = 1
                 if event.key == pygame.K_1:
                     gameinfo.p1startbut = 1
+                if event.key == pygame.K_2:
+                    gameinfo.p2startbut = 1
+
 
         # End-of-screen interrupt (scanline 224)
         # TODO: Check and handle tilt goes here. Not really needed.
@@ -457,20 +615,32 @@ def main():
         # if suspendPlay:
         #   break
         if gameinfo.gameMode:
-            pass
             # process game objects
-        elif gameinfo.credit > 0:
-            if gameinfo.waitforstartloop:
-                pass
-            else:
-                gameinfo.waitforstartloop = 1
-                # Disable ISR game tasks here
-                interrupt_event.set()
-                parallel_thread = threading.Thread(target=waitforstart)
-                parallel_thread.start()
-        else:
             pass
+        elif gameinfo.credit > 0:
+            gameinfo.ISRsplashtask = 0
+            interrupt_event.set()
+            waitforstart()
+        else:
             # process ISR splash tasks
+            if gameinfo.ISRsplashtask == 1:
+                # Play demo - call main game-play timing loop without sound (0x0072)
+                #syncrollingshot()
+                drawalien()
+                rungameobjs()
+                #timetosaucer()
+                # This next function should be handled by mid-screen interrupt.
+                cursorNextAlien()
+            if gameinfo.ISRsplashtask == 2:
+                # Animate alien stealing y
+                splash.y += splash.dy
+                videomem.plotsprite(splash.sprite[(splash.form//4) % 2], splash.y, splash.x)
+                splash.form += 1
+                if splash.y == splash.target:
+                    splash.reached = 1
+            if gameinfo.ISRsplashtask == 3:
+                # alien shooting c code should go here
+                pass
 
         # Update the display
         videomem.updatescreen()
@@ -480,18 +650,6 @@ def main():
 
     # Quit Pygame and the program
     pygame.quit()
-
-    '''
-    game_over = False
-    while not game_over:
-        key = pygame.key.get_pressed()
-        if key[pygame.K_LEFT]:
-            pos = np.maximum(2, pos-1)
-        elif key[pygame.K_RIGHT]:
-            pos = np.minimum(202-16, pos+1)
-
-    '''
-
 
 if __name__ == '__main__':
     main()
