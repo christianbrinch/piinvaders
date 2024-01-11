@@ -32,6 +32,16 @@ alienB1 = [0x00, 0x00, 0x00, 0x0E, 0x18, 0xBE, 0x6D, 0x3D,
 alienC1 = [0x00, 0x00, 0x00, 0x00, 0x1A, 0x3D, 0x68, 0xFC,
            0xFC, 0x68, 0x3D, 0x1A, 0x00, 0x00, 0x00, 0x00]
 
+squiglyShot = [[0x44, 0xAA, 0x10], [0x88, 0x54, 0x22],
+               [0x10, 0xAA, 0x44], [0x22, 0x54, 0x88]]
+
+rollShot = [[0x00, 0xFE, 0x00], [0x24, 0xFE, 0x12],
+            [0x00, 0xFE, 0x00], [0x48, 0xFE, 0x90]]
+
+plungerShot = [[0x04, 0xFC, 0x04], [0x10, 0xFC, 0x10],
+               [0x20, 0xFC, 0x20], [0x80, 0xFC, 0x80]]
+
+
 alienExplode = [0x00, 0x08, 0x49, 0x22, 0x14, 0x81, 0x42, 0x00,
                 0x42, 0x81, 0x14, 0x22, 0x49, 0x08, 0x00, 0x00]
 
@@ -100,6 +110,10 @@ AlienSprCA = [0x60, 0x10, 0x0F, 0x10, 0x60, 0x30, 0x18, 0x1A,
 AlienSprCB = [0x00, 0x60, 0x10, 0x0F, 0x10, 0x60, 0x38, 0x19,
               0x3A, 0x6D, 0xFA, 0xFA, 0x6D, 0x3A, 0x19, 0x00]
 
+ColFireTable = [0x01, 0x07, 0x01, 0x01, 0x01, 0x04, 0x0B, 0x01, 
+                0x06, 0x03, 0x01, 0x01, 0x0B, 0x09, 0x02, 0x08, 
+                0x02, 0x0B, 0x04, 0x07, 0x0A]    
+
 
 #SHOT_SOUND = pygame.mixer.Sound("sound/shoot.wav")
 #HIT_SOUND = pygame.mixer.Sound("sound/invaderkilled.wav")
@@ -141,6 +155,100 @@ class splashanimateRAM():
         self.target = target
         self.reached = reached
 
+class alienShotObjects():
+    def __init__(self, extra, handler, shottrack, cFir, image):
+        self.timer = 0x00
+        self.timerExtra = extra
+        self.handler = handler
+        self.status = 0x00
+        self.stepCnt = 0x00
+        self.ShotTrack = shottrack
+        self.ShotCFir = cFir
+        self.ShotBlowCnt = 0x04
+        self.ShotImage = image
+        self.ShotYr = 0x00
+        self.ShotXr = 0x00
+
+    def gameObj2(self):
+        self.timerExtra = 0x02 # restore timer
+        # I dont get this code
+        #if self.ShotCFir > 0:
+        #    self.ShotCFir -= 1
+        #    return
+        ram.otherShot1 = alienshots[1].stepCnt
+        ram.otherShot2 = alienshots[2].stepCnt
+        self.handleShot()
+        if self.ShotBlowCnt == 0:
+            self.__init__(*rolling)
+
+    def gameObj3(self):
+        pass
+
+    def gameObj4(self):
+        pass
+
+    def handleShot(self):
+        if self.status == 0:
+            # initiate the shot
+            if gameinfo.ISRsplashtask == 4:
+                # We are in "Shooting the c"-mode
+                self.status = 1
+                self.stepCnt = 1
+                return 
+            if ram.enableAlienFire:
+                stepcount = 0
+                if 0 < ram.otherShot1 < gameinfo.aShotReloadRate:
+                    return 
+                if 0 < ram.otherShot2 < gameinfo.aShotReloadRate:
+                    return 
+                
+                if self.ShotTrack:
+                    # Make tracking shot
+                    col = (ram.playerXr+0x08 - ram.refAlienXr) // 16
+                    col = np.minimum(np.maximum(0,col),11)
+                else:
+                    # Don't track
+                    col = ColFireTable[self.ShotCFir]
+                    self.ShotCFir = (self.ShotCFir % 21) 
+                # switch player here
+                aliens = [col*11+i for i in range(5)]
+                if sum(aliens)==0:
+                    # No aliens in column
+                    return 
+                else:
+                    for c in range(5):
+                        if aliens[c] > 0:
+                            break
+                    # use getaliencoords() instead
+                    self.ShotYr = (ram.refAlienXr + (c % 11) * 16) + 7
+                    self.ShotXr = (ram.refAlienYr + (c // 11) * 16) - 10
+                    self.status = 1
+                    self.stepCnt = 1
+                    return
+        else:
+            # move the shot
+            if self.status == 1:
+                # Shot is blowing up code here
+                pass
+            self.stepCnt += 1
+            self.ShotYr += ram.alienShotDelta
+            videomem.plotshiftedsprite(self.ShotImage[self.stepCnt % 4], self.ShotXr-0x24, self.ShotYr)
+            return 
+
+
+
+
+
+
+
+
+rolling = (0x02, 2, 0x00, 0x00, rollShot)
+plunger = (0x00, 3, 0x01, 0x00, plungerShot)
+squigly = (0x00, 4, 0x01, 0x06, squiglyShot)
+
+alienshots = [alienShotObjects(*rolling),
+              alienShotObjects(*plunger),
+              alienShotObjects(*squigly)]
 
 class ROMmirror():
     def __init__(self):
@@ -632,7 +740,8 @@ def rungameobjs():
     gameObj1()
     # Alien shot objectives
     if ram.obj2TimerLSB == 0:
-        gameObj2()
+        #gameObj2()
+        alienshots[0].gameObj2()
     else:
         ram.obj2TimerLSB -= 1
     gameObj3()
@@ -693,7 +802,8 @@ def gameObj2():
         return
     ram.otherShot1 = ram.pluShotStepCnt
     ram.otherShot2 = ram.squShotStepCnt
-    ram.rolShotStatus, ram.rolShotStepCnt = handleAlienShot(ram.rolShotStatus, ram.rolStotStepCnt, ram.rolShotTrack)
+    #ram.rolShotStatus, ram.rolShotStepCnt = handleAlienShot(ram.rolShotStatus, ram.rolShotStepCnt, ram.rolShotTrack, ram.rolShotCFirLSB)
+    handleAlienShot(ram.rolShotStatus, ram.rolShotStepCnt, ram.rolShotTrack, ram.rolShotCFirLSB)
     if ram.aShotBlowCnt == 0:
         # Reinitialize shot
         ram.obj2TimerMSB = 0x00
@@ -720,10 +830,10 @@ def gameObj3():
 def gameObj4():
     pass
 
-def handleAlienShot(shotstatus, stepcount, shottrack):
-    if shotStatus == 0:
+def handleAlienShot(shotstatus, stepcount, shottrack, colfire):
+    if shotstatus == 0:
         # initiate the shot
-        if gameinfo.ISRsplashtask = 4:
+        if gameinfo.ISRsplashtask == 4:
             # We are in "Shooting the c"-mode
             shotstatus = 1
             stepcount = 1
@@ -731,33 +841,41 @@ def handleAlienShot(shotstatus, stepcount, shottrack):
         if ram.enableAlienFire:
             stepcount = 0
             if 0 < ram.otherShot1 < gameinfo.aShotReloadRate:
-                return
+                return shotstatus, stepcount
             if 0 < ram.otherShot2 < gameinfo.aShotReloadRate:
-                return
+                return shotstatus, stepcount
             if shottrack:
                 # Make tracking shot
                 col = (ram.playerXr+0x08 - ram.refAlienXr) // 16
                 col = np.minimum(np.maximum(0,col),11)
-                # switch player here
-                aliens = [col*11+i for i in range(5)]
-                if sum(aliens)==0:
-                    return
-                else:
-                    for c in range(5):
-                        if aliens[c] > 0:
-                            break
-                    # use getaliencoords() instead
-                    ram.alienShotYr = (ram.refAlienXr + (c % 11) * 16) + 7
-                    ram.alienShotXr = (ram.refAlienYr + (c // 11) * 16) - 10
-                    shotstatus = 1
-                    stepcount = 1
-                    return shotstatus, stepcount 
             else:
                 # Don't track
-
-            
+                col = ColFireTable[colfire]
+                colfire += 1 # TODO: Backpropagate this to the data structure
+            # switch player here    
+            aliens = [col*11+i for i in range(5)]
+            if sum(aliens)==0:
+                return shotstatus, stepcount
+            else:
+                for c in range(5):
+                    if aliens[c] > 0:
+                        break
+                # use getaliencoords() instead
+                ram.alienShotYr = (ram.refAlienXr + (c % 11) * 16) + 7
+                ram.alienShotXr = (ram.refAlienYr + (c // 11) * 16) - 10
+                shotstatus = 1
+                stepcount = 1
+                return shotstatus, stepcount 
     else:
         # move the shot
+        if shotstatus == 1:
+            # Shot is blowing up code here
+            pass
+        stepcount += 1
+        ram.alienShotYr += ram.alienShotDelta
+        videomem.plotshiftedsprite(squiglyShot[0], ram.alienShotXr-0x24, ram.alienShotYr)
+        return shotstatus, stepcount 
+
 
 gameinfo = GameInfo()
 ram = ROMmirror()
