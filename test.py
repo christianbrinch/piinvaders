@@ -56,7 +56,7 @@ playerBlow0 = [0x00, 0x04, 0x01, 0x13, 0x03, 0x07, 0xB3, 0x0F,
 playerBlow1 = [0x40, 0x08, 0x05, 0xA3, 0x0A, 0x03, 0x5B, 0x0F,
                0x27, 0x27, 0x0B, 0x4B, 0x40, 0x84, 0x11, 0x48]
 
-playerShot = [0x0F]
+playerShot = [0x0F] 
 
 shotExploding = [0x99, 0x3C, 0x7E, 0x3D, 0xBC, 0x3E, 0x7C, 0x99]
 
@@ -202,16 +202,16 @@ class alienShotObjects():
                 if 0 < ram.otherShot2 < gameinfo.aShotReloadRate:
                     return 
                 
-                if self.ShotTrack:
-                    # Make tracking shot
+                if not self.ShotTrack: # This is reversed (shottrack = 0)
+                    # Make tracking shot - this does not work at the moment
                     col = (ram.playerXr+0x08 - ram.refAlienXr) // 16
-                    col = np.minimum(np.maximum(0,col),11)
+                    col = np.minimum(np.maximum(0,col),10)
                 else:
                     # Don't track
                     col = ColFireTable[self.ShotCFir]
                     self.ShotCFir = (self.ShotCFir % 21) 
                 # switch player here
-                aliens = [col*11+i for i in range(5)]
+                aliens = [playerinfo[0].aliens[col+i*11] for i in range(5)]
                 if sum(aliens)==0:
                     # No aliens in column
                     return 
@@ -220,23 +220,44 @@ class alienShotObjects():
                         if aliens[c] > 0:
                             break
                     # use getaliencoords() instead
-                    self.ShotYr = (ram.refAlienXr + (c % 11) * 16) + 7
-                    self.ShotXr = (ram.refAlienYr + (c // 11) * 16) - 10
+                    self.ShotXr = (ram.refAlienXr + col * 16) + 7
+                    self.ShotYr = (ram.refAlienYr + c * 16) - 10
                     self.status = 1
                     self.stepCnt = 1
                     return
         else:
             # move the shot
-            if self.status == 1:
+            if self.status == 5:
                 # Shot is blowing up code here
-                pass
+                self.shotBlowingUp()
+            videomem.eraseshifted(self.ShotImage[self.stepCnt % 4], self.ShotXr-0x24, self.ShotYr)
             self.stepCnt += 1
             self.ShotYr += ram.alienShotDelta
-            videomem.plotshiftedsprite(self.ShotImage[self.stepCnt % 4], self.ShotXr-0x24, self.ShotYr)
+            ram.collision = videomem.plotshiftedspritecol(self.ShotImage[self.stepCnt % 4], self.ShotXr-0x24, self.ShotYr)
+            
+            if self.ShotYr <= 21:
+                self.status = 5
+                return
+            
+            if ram.collision:
+                if 30 < self.ShotYr < 39:
+                    # Player has been hit
+                    ram.playerAlive = 0
+                if self.ShotYr > 39:
+                    # Shield has been hit
+                    self.status = 5
             return 
 
-
-
+    def shotBlowingUp(self):
+        # Alien shot blowing up
+        self.ShotBlowCnt -= 1
+        if self.ShotBlowCnt == 3:
+            # Draw the explosion
+            videomem.eraseshifted(self.ShotImage[self.stepCnt % 4], self.ShotXr-0x24, self.ShotYr)
+            videomem.plotshiftedspritecol(aShotExplod, self.ShotXr-0x24, self.ShotYr)
+        if self.ShotBlowCnt == 0:
+            videomem.eraseshifted(aShotExplod, self.ShotXr-0x24, self.ShotYr)
+        # More code here
 
 
 
@@ -299,57 +320,6 @@ class ROMmirror():
         self.shotDeltaX = 0x04
         self.fireBounce = 0x00
 
-        self.obj2TimerMSB = 0x00
-        self.obj2TimerLSB = 0x00
-        self.obj2TimerExtra = 0x02
-        self.obj2HandlerLSB = 0x76
-        self.obj2HandlerMSB = 0x04
-        self.rolShotStatus = 0x00
-        self.rolShotStepCnt = 0x00
-        self.rolShotTrack = 0x00
-        self.rolShotCFirLSB = 0x00
-        self.rolShotCFirMSB = 0x00
-        self.rolShotBlowCnt = 0x04
-        self.rolShotImageLSB = 0xEE
-        self.rolShotImageMSB = 0x1C
-        self.rolShotYr = 0x00
-        self.rolShotXr = 0x00
-        self.rolShotSize = 0x03
-
-        self.obj3TimerMSB = 0x00
-        self.obj3TimerLSB = 0x00
-        self.obj3TimerExtra = 0x00
-        self.obj3HandlerLSB = 0xB6
-        self.obj3HandlerMSB = 0x04
-        self.pluShotStatus = 0x00
-        self.pluShotStepCnt = 0x00
-        self.pluShotTrack = 0x01
-        self.pluShotCFirLSB = 0x00
-        self.pluShotCFirMSB = 0x1D
-        self.pluShotBlowCnt = 0x04
-        self.pluShotImageLSB = 0xE2
-        self.pluShotImageMSB = 0x1C
-        self.pluShotYr = 0x00
-        self.pluSHotXr = 0x00
-        self.pluShotSize = 0x03
-
-        self.obj4TimerMSB = 0x00
-        self.obj4TimerLSB = 0x00
-        self.obj4TimerExtra = 0x00
-        self.obj4HandlerLSB = 0x82
-        self.obj4HandlerMSB = 0x06
-        self.squShotStatus = 0x00
-        self.squShotStepCnt = 0x00
-        self.squShotTrack = 0x01
-        self.squShotCFirLSB = 0x06
-        self.squShotCFirMSB = 0x1D
-        self.squSHotBlowCnt = 0x04
-        self.squShotImageLSB = 0xD0
-        self.squShotImageMSB = 0x1C
-        self.squShotYr = 0x00
-        self.squShotXr = 0x00
-        self.squShotSize = 0x03
-        
         self.endOfTasks = 0xFF
         self.collision = 0x00
         self.expAlienLSB = 0xC0
@@ -380,7 +350,7 @@ class ROMmirror():
         self.alienShotYr = 0x00
         self.alienShotXr = 0x00
         self.alienShotSize = 0x00
-        self.alienShotDelta = 0x00
+        self.alienShotDelta = -1 # where is this set in the code?
         self.shotPicEnd = 0x00
         self.shotSync = 0x01
         self.tmp2081 = 0xFF
@@ -433,35 +403,42 @@ class VideoMem(list):
                 self[(0x1F - x) + ((y + idx) * 0x20)] = n
 
     def plotshiftedsprite(self, sprite, y, x):
-        shift = 4-(x & 7)
+        shift = x % 8
         x = x // 8
         for idx, n in enumerate(sprite):
-            if len(sprite) == 1:
-                n = n*16 >> shift
-            field = self.getmemory(y+idx, x)
+            n = n << shift
+            n1 = n//256
+            n2 = n%256
             if ((y+idx) <= 223):
-                self[(0x1F - x) + ((y + idx) * 0x20)] = field | n
+                self[(0x1F - x) + ((y + idx) * 0x20)] = self.getmemory(y+idx, x) | n2
+                self[(0x1F - x-1) + ((y + idx) * 0x20)] = self.getmemory(y+idx, x+1) | n1
 
     def eraseshifted(self, sprite, y, x):
-        shift = 4-(x & 7)
+        shift = x % 8
         x = x // 8
         for idx, n in enumerate(sprite):
-            if len(sprite) == 1:
-                n = n*16 >> shift
-            field = self.getmemory(y+idx, x)
+            n = n << shift
+            n1 = n//256
+            n2 = n%256
             if ((y+idx) <= 223):
-                self[(0x1F - x) + ((y + idx) * 0x20)] = np.maximum(0,field - n)
+                self[(0x1F - x) + ((y + idx) * 0x20)] = np.maximum(0, self.getmemory(y+idx, x) - n2)
+                self[(0x1F - x-1) + ((y + idx) * 0x20)] = np.maximum(0, self.getmemory(y+idx, x+1) - n1)
 
     def plotshiftedspritecol(self, sprite, y, x):
-        shift = 4-(x & 7)
+        shift = x % 8
         x = x // 8
         collision = 0
-        for idx, m in enumerate(sprite):
-            n = m*16 >> shift
+        for idx, n in enumerate(sprite):
+            n = n << shift
+            n1 = n//256
+            n2 = n%256
             field = self.getmemory(y+idx,x)
-            collision += int(field & n)
+            collision += int(field & n2)
+            field = self.getmemory(y+idx,x+1)
+            collision += int(field & n1)
             if ((y+idx) <= 223):
-                self[(0x1F - x) + ((y + idx) * 0x20)] = field | n 
+                self[(0x1F - x) + ((y + idx) * 0x20)] = self.getmemory(y+idx,x) | n2 
+                self[(0x1F - x-1) + ((y + idx) * 0x20)] = self.getmemory(y+idx,x+1) | n1 
         return collision
 
     def getmemory(self, y, x):
@@ -617,6 +594,9 @@ def drawalien():
             return
         videomem.clearsprite(0x10, ram.expAlienXr, ram.expAlienYr)
         ram.plyrShotStatus = 0 # in the code this is set to 4 here. How does it go back to zero then?
+        ram.blowUpTimer = 10   #
+        ram.obj1CoorYr = 0x28  # The code does not re-initialize the obj1 struct here. But where else?
+        ram.obj1CoorXr = 0x30  #
         ram.alienIsExploding = 0
         # TODO: Turn off alien is exploding sound here
     else:
@@ -631,11 +611,14 @@ def drawalien():
                 sprite[ram.alienFrame], ram.alienPosMSB - 0x24, ram.alienPosLSB // 8)
             videomem.plotsprite([0x00]*16, ram.alienPosMSB -
                                 0x24, (ram.alienPosLSB // 8)+1)
+    ram.waitOnDraw = 0
     return
 
 
 def cursorNextAlien():
     if ram.playerOK:
+        if ram.waitOnDraw:
+            return
         # switch here between player 1 and 2
         ram.alienCurIndex += 1
         if ram.alienCurIndex == 55:
@@ -644,7 +627,7 @@ def cursorNextAlien():
             cursorNextAlien()
         getAlienCoords()
         # Here goes code that handles "Invaded" situation - game over
-
+        ram.waitOnDraw = 1
 
 def getAlienCoords():
     ram.alienPosMSB = ram.refAlienXr + (ram.alienCurIndex % 11) * 16
@@ -738,15 +721,16 @@ def rungameobjs():
     else:
         ram.obj0TimerLSB -= 1
     gameObj1()
+    
     # Alien shot objectives
-    if ram.obj2TimerLSB == 0:
+    if alienshots[0].timer == 0:
         #gameObj2()
         alienshots[0].gameObj2()
     else:
         ram.obj2TimerLSB -= 1
-    gameObj3()
-    gameObj4()
-
+    alienshots[1].gameObj3()
+    alienshots[2].gameObj4()
+    
 
 def gameObj0():
     if ram.playerOK:
@@ -756,9 +740,9 @@ def gameObj0():
             pass
         else:
             if ram.nextDemoCmd:
-                ram.playerXr += 1
+                ram.playerXr = np.minimum(ram.playerXr+1, 242) # Is this right?  
             else:
-                ram.playerXr -= 1
+                ram.playerXr = np.maximum(ram.playerXr-1, 0x24)
             videomem.plotsprite(player, ram.playerXr-0x24, ram.playerYr // 8)
     else:
         # Handle player blowing up
@@ -791,91 +775,9 @@ def gameObj1():
         if ram.blowUpTimer == 9:
             videomem.eraseshifted(playerShot, ram.obj1CoorXr-0x24, ram.obj1CoorYr)
             # Adjust explosion position here. Not quite right at the moment
-            ram.obj1CoorXr -= 0x03
-            #ram.obj1CoorYr -= 0x03
+            ram.obj1CoorXr -= 0x02
+            ram.obj1CoorYr -= 0x03
             videomem.plotshiftedsprite(shotExploding, ram.obj1CoorXr-0x24, ram.obj1CoorYr)
-
-def gameObj2():
-    ram.obj2TimerExtra = 0x02 # restore timer
-    if ram.rolShotCFirLSB == 0:
-        ram.rolShotCFirLSB -= 1
-        return
-    ram.otherShot1 = ram.pluShotStepCnt
-    ram.otherShot2 = ram.squShotStepCnt
-    #ram.rolShotStatus, ram.rolShotStepCnt = handleAlienShot(ram.rolShotStatus, ram.rolShotStepCnt, ram.rolShotTrack, ram.rolShotCFirLSB)
-    handleAlienShot(ram.rolShotStatus, ram.rolShotStepCnt, ram.rolShotTrack, ram.rolShotCFirLSB)
-    if ram.aShotBlowCnt == 0:
-        # Reinitialize shot
-        ram.obj2TimerMSB = 0x00
-        ram.obj2TimerLSB = 0x00
-        ram.obj2TimerExtra = 0x02
-        ram.obj2HandlerLSB = 0x76
-        ram.obj2HandlerMSB = 0x04
-        ram.rolShotStatus = 0x00
-        ram.rolShotStepCnt = 0x00
-        ram.rolShotTrack = 0x00
-        ram.rolShotCFirLSB = 0x00
-        ram.rolShotCFirMSB = 0x00
-        ram.rolShotBlowCnt = 0x04
-        ram.rolShotImageLSB = 0xEE
-        ram.rolShotImageMSB = 0x1C
-        ram.rolShotYr = 0x00
-        ram.rolShotXr = 0x00
-        ram.rolShotSize = 0x03
-
-
-def gameObj3():
-    pass
-
-def gameObj4():
-    pass
-
-def handleAlienShot(shotstatus, stepcount, shottrack, colfire):
-    if shotstatus == 0:
-        # initiate the shot
-        if gameinfo.ISRsplashtask == 4:
-            # We are in "Shooting the c"-mode
-            shotstatus = 1
-            stepcount = 1
-            return shotstatus, stepcount
-        if ram.enableAlienFire:
-            stepcount = 0
-            if 0 < ram.otherShot1 < gameinfo.aShotReloadRate:
-                return shotstatus, stepcount
-            if 0 < ram.otherShot2 < gameinfo.aShotReloadRate:
-                return shotstatus, stepcount
-            if shottrack:
-                # Make tracking shot
-                col = (ram.playerXr+0x08 - ram.refAlienXr) // 16
-                col = np.minimum(np.maximum(0,col),11)
-            else:
-                # Don't track
-                col = ColFireTable[colfire]
-                colfire += 1 # TODO: Backpropagate this to the data structure
-            # switch player here    
-            aliens = [col*11+i for i in range(5)]
-            if sum(aliens)==0:
-                return shotstatus, stepcount
-            else:
-                for c in range(5):
-                    if aliens[c] > 0:
-                        break
-                # use getaliencoords() instead
-                ram.alienShotYr = (ram.refAlienXr + (c % 11) * 16) + 7
-                ram.alienShotXr = (ram.refAlienYr + (c // 11) * 16) - 10
-                shotstatus = 1
-                stepcount = 1
-                return shotstatus, stepcount 
-    else:
-        # move the shot
-        if shotstatus == 1:
-            # Shot is blowing up code here
-            pass
-        stepcount += 1
-        ram.alienShotYr += ram.alienShotDelta
-        videomem.plotshiftedsprite(squiglyShot[0], ram.alienShotXr-0x24, ram.alienShotYr)
-        return shotstatus, stepcount 
-
 
 gameinfo = GameInfo()
 ram = ROMmirror()
@@ -930,7 +832,8 @@ def main():
             if gameinfo.ISRsplashtask == 1:
                 # Play demo - call main game-play timing loop without sound (0x0072)
                 # sync shots here 
-                ram.syncShot = ram.obj2TimerExtra
+                #ram.syncShot = ram.obj2TimerExtra
+                ram.syncShot = alienshots[0].timerExtra
                 drawalien()
                 rungameobjs()
                 # timetosaucer()
