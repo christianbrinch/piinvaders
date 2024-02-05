@@ -187,17 +187,32 @@ class alienShotObjects():
             self.__init__(*rolling)
 
     def gameObj3(self):
-        pass
+        if ram.skipPlunger:
+            return
+        # Shot sync code goes here
+        if ram.shotSync - 1 != 0:
+            return
+        ram.otherShot1 = alienshots[0].stepCnt
+        ram.otherShot2 = alienshots[2].stepCnt
+        self.handleShot()
+        if self.ShotBlowCnt == 0:
+            cFir = self.ShotCFir
+            self.__init__(*plunger)
+            self.ShotCFir = cFir
+        if sum(playerinfo[0].aliens) == 1:
+            ram.skipPlunger = 1
+            self.ShotCFir = 0
+        
 
     def gameObj4(self):
         pass
 
     def handleShot(self):
-        if self.status != 80:
+        if self.status//0x80 != 1:
             # initiate the shot
             if gameinfo.ISRsplashtask == 4:
                 # We are in "Shooting the c"-mode
-                self.status = 80
+                self.status = 0x80
                 self.stepCnt = 1
                 return
             if ram.enableAlienFire:
@@ -213,8 +228,8 @@ class alienShotObjects():
                     col = np.minimum(np.maximum(0, col), 10)
                 else:
                     # Don't track
-                    col = ColFireTable[self.ShotCFir]
-                    self.ShotCFir = (self.ShotCFir % 21)
+                    col = ColFireTable[self.ShotCFir] - 1 # -1 to get zero-index column
+                    self.ShotCFir = (self.ShotCFir+1) % 21
                 # switch player here
                 aliens = [playerinfo[0].aliens[col+i*11] for i in range(5)]
                 if sum(aliens) == 0:
@@ -227,7 +242,7 @@ class alienShotObjects():
                     # use getaliencoords() instead
                     self.ShotXr = (ram.refAlienXr + col * 16) + 7
                     self.ShotYr = (ram.refAlienYr + c * 16) - 10
-                    self.status = 80
+                    self.status = 0x80
                     self.stepCnt = 1
                     return
         else:
@@ -249,8 +264,6 @@ class alienShotObjects():
                 return
 
             if ram.collision:
-                print(ram.collision, self.ShotYr)
-                input()
                 if 30 < self.ShotYr < 39:
                     # Player has been hit
                     ram.playerAlive = 0
@@ -270,8 +283,6 @@ class alienShotObjects():
                 aShotExplod, self.ShotXr-0x24, self.ShotYr)
         if self.ShotBlowCnt == 0:
             videomem.eraseshifted(aShotExplod, self.ShotXr-0x24, self.ShotYr)
-        input()
-        # More code here
 
 
 rolling = (0x02, 2, 0x00, 0x00, rollShot)
@@ -493,7 +504,7 @@ def init():
         return
 
     # Why is this initialied here?
-    aShotReloadRate = 8
+    gameinfo.aShotReloadRate = 8
 
     # Splash screens
     # TODO: turn off sound here
@@ -746,7 +757,6 @@ def rungameobjs():
 
     # Alien shot objectives
     if alienshots[0].timer == 0:
-        # gameObj2()
         alienshots[0].gameObj2()
     else:
         ram.obj2TimerLSB -= 1
@@ -860,8 +870,7 @@ def main():
             if gameinfo.ISRsplashtask == 1:
                 # Play demo - call main game-play timing loop without sound (0x0072)
                 # sync shots here
-                # ram.syncShot = ram.obj2TimerExtra
-                ram.syncShot = alienshots[0].timerExtra
+                ram.shotSync = alienshots[0].timerExtra
                 drawalien()
                 rungameobjs()
                 # timetosaucer()
