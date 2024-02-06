@@ -53,10 +53,10 @@ aShotExplod = [0x4A, 0x15, 0xBE, 0x3F, 0x5E, 0x25]
 player = bytearray([0x00, 0x00, 0x0F, 0x1F, 0x1F, 0x1F, 0x1F, 0x7F,
                     0xFF, 0x7F, 0x1F, 0x1F, 0x1F, 0x1F, 0x0F, 0x00])
 
-playerBlow0 = [0x00, 0x04, 0x01, 0x13, 0x03, 0x07, 0xB3, 0x0F,
-               0x2F, 0x03, 0x2F, 0x49, 0x04, 0x03, 0x00, 0x01]
-playerBlow1 = [0x40, 0x08, 0x05, 0xA3, 0x0A, 0x03, 0x5B, 0x0F,
-               0x27, 0x27, 0x0B, 0x4B, 0x40, 0x84, 0x11, 0x48]
+playerBlow = [[0x00, 0x04, 0x01, 0x13, 0x03, 0x07, 0xB3, 0x0F,
+               0x2F, 0x03, 0x2F, 0x49, 0x04, 0x03, 0x00, 0x01],
+              [0x40, 0x08, 0x05, 0xA3, 0x0A, 0x03, 0x5B, 0x0F,
+               0x27, 0x27, 0x0B, 0x4B, 0x40, 0x84, 0x11, 0x48]]
 
 playerShot = [0x0F]
 
@@ -202,10 +202,11 @@ class alienShotObjects():
         if sum(playerinfo[0].aliens) == 1:
             ram.skipPlunger = 1
             self.ShotCFir = 0
-        
 
     def gameObj4(self):
-        pass
+        ram.otherShot1 = alienshots[0].stepCnt
+        ram.otherShot2 = alienshots[1].stepCnt
+        self.handleShot()
 
     def handleShot(self):
         if self.status//0x80 != 1:
@@ -228,7 +229,8 @@ class alienShotObjects():
                     col = np.minimum(np.maximum(0, col), 10)
                 else:
                     # Don't track
-                    col = ColFireTable[self.ShotCFir] - 1 # -1 to get zero-index column
+                    col = ColFireTable[self.ShotCFir] - \
+                        1  # -1 to get zero-index column
                     self.ShotCFir = (self.ShotCFir+1) % 21
                 # switch player here
                 aliens = [playerinfo[0].aliens[col+i*11] for i in range(5)]
@@ -266,6 +268,7 @@ class alienShotObjects():
             if ram.collision:
                 if 30 < self.ShotYr < 39:
                     # Player has been hit
+                    self.status += 0x01
                     ram.playerAlive = 0
                 if self.ShotYr > 39:
                     # Shield has been hit
@@ -592,18 +595,58 @@ def init():
     gameinfo.ISRsplashtask = 1
     # Draw bottom line
     videomem.plotsprite([0x01]*224, *xy(0x2402))
+    # Run demo play
     n = 0
-    while ram.playerAlive:
+    '''
+    while ram.playerAlive == 0xFF:
         plrFireOrDemo(n)
         n += 1
         playerShotHit()
         rackBump()
         if interrupt_event.is_set():
             return
-        # Check for players been hit
-        # If no - continue, if yes - wait for demo player to stop exploding
-        # and return to splash
-    # init()
+    ram.plyrShotStatus = 0
+    while ram.playerAlive != 0xFF:
+        # Wait for blow-up to finish
+        pass
+    # Demo done. Goto next splash
+    '''
+    gameinfo.ISRsplashtask = 0
+    pygame.time.delay(1000)
+    videomem.clearplayfield()
+    videomem.printmsg("INSERT  COIN", *xy(0x2C11))
+    if gameinfo.splashAnimate % 2 == 1:
+        videomem.printmsg("C", *xy(0x3311))
+    videomem.printmsg("<1 OR 2 PLAYERS>  ", *xy(0x2A0D), delay=True)
+    # I don't quite understand the rule for displaying the next line
+    videomem.printmsg("*1 PLAYER  1 COIN ", *xy(0x2A0A), delay=True)
+    pygame.time.delay(2000)
+    if gameinfo.splashAnimate % 2 == 1:
+        splash.__init__(0, 0, 1, 0xD0//8, 0x22-0x24,
+                        [alienC0, alienC1], 0x94-0x24, 0)
+        gameinfo.ISRsplashtask = 2
+        while splash.reached == 0:
+            if interrupt_event.is_set():
+                return
+        de = [0x00, 0x10, 0x00, 0x0E, 0x05, 0x00, 0x00, 0x00,
+              0x00, 0x00, 0x07, 0xD0, 0x1C, 0xC8, 0x9B, 0x03]
+        alienshots[2] = alienShotObjects(*squigly)
+        ram.shotSync = 0x02
+        ram.alienShotDelta = -1
+        gameinfo.ISRsplashtask = 4
+        while alienshots[2].status != 1:
+            pass
+        while alienshots[2].status == 1:
+            pass
+
+        gameinfo.ISRsplashtask = 0
+        videomem.printmsg(" ", *xy(0x3311))
+        pygame.time.delay(2000)
+
+    gameinfo.splashAnimate += 1
+    videomem.clearplayfield()
+    gameinfo.aShotReloadRate = 0x08
+    init()
 
 
 def waitforstart():
@@ -676,7 +719,7 @@ def moveRefAlien():
 
 
 def plrFireOrDemo(n):
-    if ram.playerAlive:
+    if ram.playerAlive == 0xFF:
         if ram.obj0TimerLSB > 0:
             # return if timer not zero
             return
@@ -686,7 +729,7 @@ def plrFireOrDemo(n):
             pass
         else:
             # Demo mode
-            ram.plyrShotStatus = 1
+            # ram.plyrShotStatus = 1
             ram.nextDemoCmd = demoCommands[n % 12]
 
 
@@ -748,6 +791,12 @@ def rackBump():
             ram.rackDirection = 0
 
 
+def DrawPlayerDie():
+    ram.playerAlive = (ram.playerAlive + 1) % 2
+    videomem.plotsprite(playerBlow[ram.playerAlive],
+                        ram.playerXr-0x24, ram.playerYr // 8)
+
+
 def rungameobjs():
     if ram.obj0TimerLSB == 0:
         gameObj0()
@@ -765,21 +814,53 @@ def rungameobjs():
 
 
 def gameObj0():
-    if ram.playerOK:
+    if ram.playerAlive == 0xFF:
         ram.enableAlienFire = 1
         if gameinfo.gameMode:
             # use switch to control player
             pass
         else:
-            if ram.nextDemoCmd:
-                ram.playerXr = np.minimum(
-                    ram.playerXr+1, 242)  # Is this right?
-            else:
-                ram.playerXr = np.maximum(ram.playerXr-1, 0x24)
+            # if ram.nextDemoCmd:
+            #    ram.playerXr = np.minimum(
+            #        ram.playerXr+1, 242)  # Is this right?
+            # else:
+            #    ram.playerXr = np.maximum(ram.playerXr-1, 0x24)
             videomem.plotsprite(player, ram.playerXr-0x24, ram.playerYr // 8)
     else:
         # Handle player blowing up
-        pass
+        ram.expAnimateTimer -= 1
+        if ram.expAnimateTimer > 0:
+            return
+        ram.playerOK = 0
+        ram.enableAlienFire = 0
+        ram.alienFireDelay = 0x30
+        ram.expAnimateTimer = 0x05
+        ram.expAnimateCnt -= 0x01
+        if ram.expAnimateCnt > 0:
+            DrawPlayerDie()
+            return
+        videomem.clearsprite(16, ram.playerXr - 0x24, ram.playerYr // 8)
+        ram.obj0TimerMSB = 0x00
+        ram.obj0TimerLSB = 0x80
+        ram.obj0TimerExtra = 0x00
+        ram.obj0HanlderLSB = 0x8E
+        ram.oBJ0HanlderMSB = 0x02
+        ram.playerAlive = 0xFF
+        ram.expAnimateTimer = 0x05
+        ram.expAnimateCnt = 0x0C
+        ram.plyrSprPicL = 0x60
+        ram.plyrSprPicM = 0x1C
+        ram.playerYr = 0x20
+        ram.playerXr = 0x30
+        ram.plyrSprSiz = 0x10
+        ram.nextDemoCmd = 0x01
+        ram.hidMessSeq = 0x00
+        # Turn off sound here
+        if ram.invaded:
+            return
+        if not gameinfo.gameMode:
+            return
+        # if we are in game mode, here goes code to switch player and remove ship from bottom bar and clear play field
 
 
 def gameObj1():
@@ -884,9 +965,8 @@ def main():
                 splash.form += 1
                 if splash.y == splash.target:
                     splash.reached = 1
-            if gameinfo.ISRsplashtask == 3:
-                # alien shooting c code should go here
-                pass
+            if gameinfo.ISRsplashtask == 4:
+                alienshots[2].gameObj4()
 
         # Update the display
         videomem.updatescreen()
