@@ -628,11 +628,13 @@ def init():
         while splash.reached == 0:
             if interrupt_event.is_set():
                 return
+        # What is this data structure?
         de = [0x00, 0x10, 0x00, 0x0E, 0x05, 0x00, 0x00, 0x00,
               0x00, 0x00, 0x07, 0xD0, 0x1C, 0xC8, 0x9B, 0x03]
         alienshots[2] = alienShotObjects(*squigly)
         ram.shotSync = 0x02
-        ram.alienShotDelta = -1
+        # This value never changes anywhere in the code, so why set it here?
+        # ram.alienShotDelta = -1
         gameinfo.ISRsplashtask = 4
         while alienshots[2].status != 1:
             pass
@@ -700,7 +702,7 @@ def cursorNextAlien():
         if not playerinfo[0].aliens[ram.alienCurIndex]:
             cursorNextAlien()
         getAlienCoords()
-        # Here goes code that handles "Invaded" situation - game over
+        # TODO: Here goes code that handles "Invaded" situation - game over
         ram.waitOnDraw = 1
 
 
@@ -729,7 +731,7 @@ def plrFireOrDemo(n):
             pass
         else:
             # Demo mode
-            # ram.plyrShotStatus = 1
+            ram.plyrShotStatus = 1
             ram.nextDemoCmd = demoCommands[n % 12]
 
 
@@ -820,11 +822,11 @@ def gameObj0():
             # use switch to control player
             pass
         else:
-            # if ram.nextDemoCmd:
-            #    ram.playerXr = np.minimum(
-            #        ram.playerXr+1, 242)  # Is this right?
-            # else:
-            #    ram.playerXr = np.maximum(ram.playerXr-1, 0x24)
+            if ram.nextDemoCmd:
+                ram.playerXr = np.minimum(
+                    ram.playerXr+1, 242)  # Is this right?
+            else:
+                ram.playerXr = np.maximum(ram.playerXr-1, 0x24)
             videomem.plotsprite(player, ram.playerXr-0x24, ram.playerYr // 8)
     else:
         # Handle player blowing up
@@ -840,6 +842,7 @@ def gameObj0():
             DrawPlayerDie()
             return
         videomem.clearsprite(16, ram.playerXr - 0x24, ram.playerYr // 8)
+        # This reinit of the player data should be done better
         ram.obj0TimerMSB = 0x00
         ram.obj0TimerLSB = 0x80
         ram.obj0TimerExtra = 0x00
